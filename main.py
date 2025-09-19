@@ -37,12 +37,8 @@ issues = jira_get("/rest/api/3/search", params={
     "fields": "summary,status,assignee,duedate,priority,created,updated"
 })["issues"]
 
-print("Fetched issues from JIRA:")
-# for issue in issues:
-#     print(f"- {issue['key']}: {issue['fields']['summary']} (Updated: {issue['fields']['updated']}))"
-print(issues)
-
 # %%
+# 2. 格式化任务列表为字符串
 
 
 def format_issues_to_str(issues):
@@ -93,10 +89,10 @@ resp = client.models.generate_content(
 )
 
 # %%
-# 4. 获取 Gemini 分析结果并打印
+# 4. 获取 Gemini 分析结果
 gemini_response = resp.text
-print("=== AI 分析结果 ===")
-print(gemini_response)
+# print("=== AI 分析结果 ===")
+# print(gemini_response)
 
 # %%
 # 5. 定义将结果返回 Jira 的函数
@@ -108,6 +104,8 @@ def jira_post(path, data):
     r = requests.post(url, json=data, auth=(JIRA_USER, JIRA_TOKEN))
     r.raise_for_status()
     return r.json()
+
+# 6. 执行添加评论的操作
 
 
 def add_comment_to_jira(issue_key, comment_text):
@@ -144,7 +142,6 @@ def add_comment_to_jira(issue_key, comment_text):
 
 
 # %%
-# 6. 执行添加评论的操作
-# 将下面的 'BTS-6' 替换为您希望评论的真实 JIRA ISSUE KEY
+# 将下面的 'BTS-6' 替换为您希望评论的真实 JIRA ISSUE KEY !!!
 issue_to_comment = "BTS-6"
 add_comment_to_jira(issue_to_comment, gemini_response)
