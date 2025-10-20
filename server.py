@@ -1,9 +1,10 @@
-
+import re
 import os
 import requests
 import json
 import google.generativeai as genai
 from google.generativeai import types as gt
+from openai import AzureOpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from pydantic import BaseModel
 # 加载环境变量
 load_dotenv()
 
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 REDMINE_API_KEY = os.getenv("REDMINE_API_KEY")
 BASE_URL = "http://localhost:3000"  # 假设 Redmine 运行在本地3000端口
@@ -69,6 +71,24 @@ def format_redmine_issues_to_str(issues):
     return "\n".join(lines)
 
 
+def strip_markdown_fence(text: str) -> str:
+    """
+    去掉包裹在 ```markdown ... ``` 或 ``` ... ``` 之间的围栏。
+    """
+    if not text:
+        return text
+    text = text.strip()
+
+    # 匹配以 ```markdown 或 ```md 或 ``` 开头的整块
+    pattern = r"^```(?:markdown|md)?\s*([\s\S]*?)\s*```$"
+    match = re.match(pattern, text, re.MULTILINE)
+    if match:
+        return match.group(1).strip()
+
+    # 如果不是整块 fenced code，但有部分包裹，也可以用替换去掉
+    return re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
+
+
 def analyze_with_gemini(issues_str):
     prompt = (
         "你是资深项目管理顾问，请根据以下 Redmine 工单列表，输出结构化的分析建议。\n"
@@ -84,6 +104,20 @@ def analyze_with_gemini(issues_str):
         + issues_str
     )
 
+    example = (
+        '''
+        Analysis for AI Project
+        ## 项目建议：
+        鉴于当前有多个工单处于“新建”状态，并且优先级分级存在急迫性（如“修复紧急BUG1”），建议在项目整体进展上优先处理优先级高和紧急的任务，确保这些任务能在最短时间内得到解决。应定期评估工单进展，并适时调整任务优先级，识别潜在风险并制定应对措施，确保项目按计划推进。
+
+        ## 排期管理建议：
+        考虑到“修复紧急BUG1”任务的截止日期是2025年10月21日，建议立即着手执行。同时，尽管“开发新功能1”的截止日期是2025年10月24日，但由于该任务的优先级较高，建议在其后尽快开始，有效地避免由于时间紧迫导致的进度延误。对“support”任务，没有明确的截止时间，建议设定一个合理的时间框架，以推动其进展并确保资源的合理配置。
+
+        ## 人员分配建议：
+        目前所有工单均由同一负责人（Redmine Admin）负责，这可能导致负载过重和任务执行延迟。建议评估团队成员的能力和当前负载，合理分配工单，特别是在高优先级任务上进行适当的资源重新分配，以分担风险和压力，提升工作效率。可以引入团队其它成员，尤其是将“fix urgent bug 1”和“develop new feature 1”任务分配给不同的成员进行平行处理。
+        '''
+    )
+
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=(
@@ -96,12 +130,30 @@ def analyze_with_gemini(issues_str):
         )
     )
 
+    client = AzureOpenAI(
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+        azure_endpoint="https://after-mgzd767o-eastus2.cognitiveservices.azure.com/",
+        api_version="2024-12-01-preview"
+    )
+
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "请始终使用 Markdown 格式回答，必要时使用 ``` 代码块。 格式如：" + example},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
     try:
         gemini_response = model.generate_content(prompt)
-        return gemini_response.text
+        open_ai_response = resp.choices[0].message.content
+        openai_clean = strip_markdown_fence(open_ai_response)
+        print(gemini_response.text)
+        print(open_ai_response)
+        return openai_clean
     except Exception as e:
-        print(f"Error calling Gemini API: {e}")
-        return "调用 Gemini API 时出错。"
+        print(f"Error calling API: {e}")
+        return "调用 AI API 时出错。"
 
 # --- API 端点 ---
 
