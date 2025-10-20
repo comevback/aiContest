@@ -1,26 +1,43 @@
-import React, { useState } from 'react';
-import { analyzeProject } from '../Service/api';
+import React, { useState, useEffect } from 'react';
+import { getProjects, analyzeProject } from '../Service/api';
 import ReactMarkdown from 'react-markdown';
 
 const Analysis = () => {
-  const [projectId, setProjectId] = useState('');
+  const [projects, setProjects] = useState([]);
+  const [selectedProject, setSelectedProject] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingProjects, setLoadingProjects] = useState(false);
 
-  const handleAnalyze = async (e) => {
-    e.preventDefault();
-    if (!projectId) {
-      setError('Project ID is required.');
-      return;
-    }
+  useEffect(() => {
+    const fetchProjects = async () => {
+      setLoadingProjects(true);
+      setError(null);
+      try {
+        const result = await getProjects();
+        if (result.error) {
+          setError(result.error);
+        } else {
+          setProjects(result.projects || []);
+        }
+      } catch (err) {
+        setError(err.message || 'Failed to get projects.');
+      }
+      setLoadingProjects(false);
+    };
 
+    fetchProjects();
+  }, []);
+
+  const handleAnalyze = async (project) => {
+    setSelectedProject(project);
     setLoading(true);
     setError(null);
     setAnalysis(null);
 
     try {
-      const result = await analyzeProject(projectId);
+      const result = await analyzeProject(project.identifier);
       if (result.error) {
         setError(result.error);
       } else {
@@ -35,23 +52,34 @@ const Analysis = () => {
   return (
     <div>
       <h1>Redmine Project Analysis</h1>
-      <form onSubmit={handleAnalyze}>
-        <input
-          type="text"
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          placeholder="Enter Redmine Project ID"
-        />
-        <button type="submit" disabled={loading}>
-          {loading ? 'Analyzing...' : 'Analyze'}
-        </button>
-      </form>
+
+      {loadingProjects && <p>Loading projects...</p>}
 
       {error && <div style={{ color: 'red' }}>Error: {error}</div>}
 
-      {analysis && (
+      {!loadingProjects && !error && (
         <div>
-          <h2>Analysis Result</h2>
+          <h2>Select a Project to Analyze</h2>
+          <div className="project-list">
+            {projects.map((project) => (
+              <button 
+                key={project.id} 
+                onClick={() => handleAnalyze(project)} 
+                disabled={loading}
+                className={selectedProject?.id === project.id ? 'selected' : ''}
+              >
+                {project.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {loading && selectedProject && <p>Analyzing {selectedProject.name}...</p>}
+
+      {analysis && selectedProject && (
+        <div className="analysis-result">
+          <h2>Analysis for {selectedProject.name}</h2>
           <ReactMarkdown>{analysis}</ReactMarkdown>
         </div>
       )}

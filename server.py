@@ -24,7 +24,8 @@ app = FastAPI()
 # 配置 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001", "http://localhost:5173"],  # 允许 React 前端（假设在3001端口）
+    allow_origins=["http://localhost:3001",
+                   "http://localhost:5173"],  # 允许 React 前端（假设在3001端口）
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -103,6 +104,31 @@ def analyze_with_gemini(issues_str):
         return "调用 Gemini API 时出错。"
 
 # --- API 端点 ---
+
+
+def redmine_get_projects(api_key, url_base="http://localhost:3000"):
+    url = f"{url_base}/projects.json"
+    headers = {"X-Redmine-API-Key": api_key}
+    try:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        return resp.json().get("projects", [])
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching Redmine projects: {e}")
+        return None
+
+
+@app.get("/api/projects")
+async def get_projects():
+    if not REDMINE_API_KEY:
+        return {"error": "API keys not configured on the server."}
+
+    projects = redmine_get_projects(REDMINE_API_KEY, BASE_URL)
+
+    if projects is None:
+        return {"error": "Failed to fetch projects from Redmine."}
+
+    return {"projects": projects}
 
 
 @app.post("/api/analyze")

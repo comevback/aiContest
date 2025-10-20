@@ -39,3 +39,39 @@
 .read-the-docs {
   color: #888;
 }
+
+.project-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.project-list button {
+  padding: 10px 15px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+  background-color: #f0f0f0;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+.project-list button:hover {
+  background-color: #e0e0e0;
+  border-color: #999;
+}
+
+.project-list button.selected {
+  background-color: #646cff;
+  color: white;
+  border-color: #646cff;
+}
+
+.analysis-result {
+  margin-top: 20px;
+  padding: 20px;
+  border: 1px solid #eee;
+  border-radius: 5px;
+  background-color: #fafafa;
+  text-align: left;
+}
