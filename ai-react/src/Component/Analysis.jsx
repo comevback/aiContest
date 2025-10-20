@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { analyzeProject } from '../Service/api';
+import ReactMarkdown from 'react-markdown';
 
 const Analysis = () => {
   const [projectId, setProjectId] = useState('');
@@ -51,9 +52,7 @@ const Analysis = () => {
       {analysis && (
         <div>
           <h2>Analysis Result</h2>
-          <pre style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>
-            {analysis}
-          </pre>
+          <ReactMarkdown>{analysis}</ReactMarkdown>
         </div>
       )}
     </div>
