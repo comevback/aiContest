@@ -24,7 +24,7 @@ app = FastAPI()
 # 配置 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001"],  # 允许 React 前端（假设在3001端口）
+    allow_origins=["http://localhost:3001", "http://localhost:5173"],  # 允许 React 前端（假设在3001端口）
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
