@@ -7,11 +7,17 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+print(os.getenv("GEMINI_API_KEY"))
+print(os.getenv("REDMINE_API_KEY"))
+print(os.getenv("REDMINE_PROJECT_ID"))
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+REDMINE_API_KEY = os.getenv("REDMINE_API_KEY")
+REDMINE_PROJECT_ID = os.getenv("REDMINE_PROJECT_ID")
 
 baseUrl = "http://localhost:3000"
 url = "http://localhost:3000/issues.json?project_id=test-project"
 headers = {
-    "X-Redmine-API-Key": "7860f7b5a6597577420d79d87d584f06d17f1c95"
+    "X-Redmine-API-Key": "e9d7ab5b3b54913b375a44808816efed339b9dba"
 }
 
 # %%
