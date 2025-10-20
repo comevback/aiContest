@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getProjects, analyzeProject } from '../Service/api';
 import ReactMarkdown from 'react-markdown';
+import ClipLoader from "react-spinners/ClipLoader";
 
 const Analysis = () => {
   const [projects, setProjects] = useState([]);
@@ -31,6 +32,8 @@ const Analysis = () => {
   }, []);
 
   const handleAnalyze = async (project) => {
+    if (selectedProject?.id === project.id && analysis) return;
+
     setSelectedProject(project);
     setLoading(true);
     setError(null);
@@ -50,21 +53,17 @@ const Analysis = () => {
   };
 
   return (
-    <div>
-      <h1>Redmine Project Analysis</h1>
-
-      {loadingProjects && <p>Loading projects...</p>}
-
-      {error && <div style={{ color: 'red' }}>Error: {error}</div>}
-
-      {!loadingProjects && !error && (
-        <div>
-          <h2>Select a Project to Analyze</h2>
+    <div className="analysis-container">
+      <aside className="sidebar">
+        <h2>Projects</h2>
+        {loadingProjects ? (
+          <p>Loading projects...</p>
+        ) : (
           <div className="project-list">
             {projects.map((project) => (
-              <button 
-                key={project.id} 
-                onClick={() => handleAnalyze(project)} 
+              <button
+                key={project.id}
+                onClick={() => handleAnalyze(project)}
                 disabled={loading}
                 className={selectedProject?.id === project.id ? 'selected' : ''}
               >
@@ -72,17 +71,27 @@ const Analysis = () => {
               </button>
             ))}
           </div>
-        </div>
-      )}
-
-      {loading && selectedProject && <p>Analyzing {selectedProject.name}...</p>}
-
-      {analysis && selectedProject && (
-        <div className="analysis-result">
-          <h2>Analysis for {selectedProject.name}</h2>
-          <ReactMarkdown>{analysis}</ReactMarkdown>
-        </div>
-      )}
+        )}
+      </aside>
+      <main className="main-content">
+        {error && <div className="error-message">Error: {error}</div>}
+        {loading ? (
+          <div className="loading-indicator">
+            <ClipLoader color={"#3498db"} loading={loading} size={50} />
+            <p>Analyzing {selectedProject?.name}...</p>
+          </div>
+        ) : analysis && selectedProject ? (
+          <div className="analysis-result">
+            <h2>Analysis for {selectedProject.name}</h2>
+            <ReactMarkdown>{analysis}</ReactMarkdown>
+          </div>
+        ) : (
+          <div className="placeholder">
+            <p>Select a project to begin analysis.</p>
+            <p>Your project insights will appear here.</p>
+          </div>
+        )}
+      </main>
     </div>
   );
 };
