@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import time
@@ -7,7 +7,11 @@ from dotenv import load_dotenv
 from redminelib import Redmine
 from redminelib.exceptions import AuthError, ResourceNotFoundError
 from openai import AzureOpenAI, APIConnectionError, APIStatusError
-import re  # Added for strip_markdown_fence
+import re # Added for strip_markdown_fence
+import csv
+import io
+from datetime import datetime, timedelta, date
+import json
 
 # Load environment variables from .env file
 load_dotenv()
@@ -15,21 +19,18 @@ load_dotenv()
 REDMINE_URL = os.getenv("REDMINE_URL")
 REDMINE_API_KEY = os.getenv("REDMINE_API_KEY")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_API_VERSION = "2024-12-01-preview"  # Updated API version
-AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini"  # Updated model name
+AZURE_OPENAI_API_VERSION = "2024-12-01-preview" # Updated API version
+AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini" # Updated model name
 
 if not REDMINE_URL or not REDMINE_API_KEY:
-    raise ValueError(
-        "REDMINE_URL and REDMINE_API_KEY must be set in the .env file")
+    raise ValueError("REDMINE_URL and REDMINE_API_KEY must be set in the .env file")
 
 try:
     redmine = Redmine(REDMINE_URL, key=REDMINE_API_KEY)
     print(f"Successfully connected to Redmine at {REDMINE_URL}")
 except AuthError:
     print("ERROR: Failed to authenticate with Redmine. Check your API key.")
-    raise ValueError(
-        "Failed to authenticate with Redmine. Check your API key.")
+    raise ValueError("Failed to authenticate with Redmine. Check your API key.")
 except Exception as e:
     print(f"ERROR: Failed to connect to Redmine at {REDMINE_URL}: {e}")
     raise ValueError(f"Failed to connect to Redmine: {e}")
@@ -41,8 +42,7 @@ if AZURE_OPENAI_API_KEY:
         azure_openai_client = AzureOpenAI(
             api_key=AZURE_OPENAI_API_KEY,
             api_version=AZURE_OPENAI_API_VERSION,
-            # Hardcoded as per user's working snippet
-            azure_endpoint=AZURE_OPENAI_ENDPOINT
+            azure_endpoint="https://after-mgzd767o-eastus2.cognitiveservices.azure.com/" # Hardcoded as per user's working snippet
         )
         print("Successfully initialized Azure OpenAI client.")
     except Exception as e:
@@ -61,33 +61,8 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
-# Mock Data (will be replaced by Redmine data where possible)
-MOCK_PROGRESS_DATA = {
-    1: [  # Project Alpha
-        {"week": "Week 1", "planned": 20, "actual": 18, "predicted": 18},
-        {"week": "Week 2", "planned": 40, "actual": 35, "predicted": 36},
-        {"week": "Week 3", "planned": 60, "actual": 52, "predicted": 58},
-        {"week": "Week 4", "planned": 80, "actual": 70, "predicted": 75},
-        {"week": "Week 5", "planned": 100, "actual": None, "predicted": 88},
-        {"week": "Week 6", "planned": 100, "actual": None, "predicted": 98},
-    ],
-    2: [  # Project Beta
-        {"week": "Week 1", "planned": 15, "actual": 15, "predicted": 15},
-        {"week": "Week 2", "planned": 30, "actual": 28, "predicted": 29},
-        {"week": "Week 3", "planned": 45, "actual": 40, "predicted": 42},
-        {"week": "Week 4", "planned": 60, "actual": None, "predicted": 55},
-    ],
-    3: [  # Project Gamma
-        {"week": "Week 1", "planned": 25, "actual": 22, "predicted": 23},
-        {"week": "Week 2", "planned": 50, "actual": 48, "predicted": 49},
-        {"week": "Week 3", "planned": 75, "actual": None, "predicted": 70},
-    ]
-}
-
-
 class ProjectAnalysisRequest(BaseModel):
     project_id: str
-
 
 def strip_markdown_fence(text: str) -> str:
     """
@@ -105,7 +80,6 @@ def strip_markdown_fence(text: str) -> str:
 
     # 如果不是整块 fenced code，但有部分包裹，也可以用替换去掉
     return re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
-
 
 def analyze_redmine_issues_with_openai(issues_str: str) -> str:
     prompt = (
@@ -143,43 +117,36 @@ def analyze_redmine_issues_with_openai(issues_str: str) -> str:
         resp = azure_openai_client.chat.completions.create(
             model=AZURE_OPENAI_DEPLOYMENT_NAME,
             messages=[
-                {"role": "system",
-                    "content": "请始终使用 Markdown 格式回答，必要时使用 ``` 代码块。 格式如：" + example},
+                {"role": "system", "content": "请始终使用 Markdown 格式回答，必要时使用 ``` 代码块。 格式如：" + example},
                 {"role": "user", "content": prompt}
             ]
         )
         open_ai_response = resp.choices[0].message.content
         openai_clean = strip_markdown_fence(open_ai_response)
-        # Print raw response for debugging
-        print("Raw OpenAI Response:\n" + open_ai_response)
+        print("Raw OpenAI Response:\n" + open_ai_response) # Print raw response for debugging
         return openai_clean
     except Exception as e:
         print(f"Error calling Azure OpenAI API: {e}")
         raise e
 
-
 @app.get("/api/projects")
 async def get_projects():
     """Returns a list of projects from Redmine."""
     try:
-        projects = redmine.project.all(limit=100)  # Fetch up to 100 projects
+        projects = redmine.project.all(limit=100) # Fetch up to 100 projects
         project_list = []
         for project in projects:
-            project_list.append(
-                {"id": project.id, "name": project.name, "identifier": project.identifier})
+            project_list.append({"id": project.id, "name": project.name, "identifier": project.identifier})
         return {"projects": project_list}
     except Exception as e:
         print(f"ERROR: Failed to fetch projects from Redmine: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
-
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
 
 @app.get("/api/projects/{project_id}/issues")
 async def get_issues(project_id: int):
     """Returns issues for a given project ID from Redmine."""
     try:
-        issues = redmine.issue.filter(
-            project_id=project_id, limit=100)  # Fetch up to 100 issues
+        issues = redmine.issue.filter(project_id=project_id, limit=100) # Fetch up to 100 issues
         issue_list = []
         for issue in issues:
             issue_data = {
@@ -196,23 +163,55 @@ async def get_issues(project_id: int):
         return {"issues": issue_list}
     except ResourceNotFoundError:
         print(f"ERROR: Project {project_id} not found in Redmine.")
-        raise HTTPException(
-            status_code=404, detail="Project not found in Redmine")
+        raise HTTPException(status_code=404, detail="Project not found in Redmine")
     except Exception as e:
-        print(
-            f"ERROR: Failed to fetch issues for project {project_id} from Redmine: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch issues from Redmine: {e}")
-
+        print(f"ERROR: Failed to fetch issues for project {project_id} from Redmine: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch issues from Redmine: {e}")
 
 @app.get("/api/projects/{project_id}/export/{format}")
 async def export_data(project_id: int, format: str):
-    """Simulates exporting project data in various formats."""
-    # In a real application, you would generate the actual file content
-    # and return it with appropriate headers.
-    time.sleep(1)  # Simulate work
-    return {"message": f"Exported project {project_id} data in {format} format."}
+    """Exports project data in various formats."""
+    try:
+        issues = redmine.issue.filter(project_id=project_id, limit=100)
+        if not issues:
+            raise HTTPException(status_code=404, detail=f"No issues found for project {project_id}")
 
+        issue_data = []
+        for issue in issues:
+            issue_data.append({
+                "id": issue.id,
+                "subject": issue.subject,
+                "status": issue.status.name if hasattr(issue.status, 'name') else None,
+                "priority": issue.priority.name if hasattr(issue.priority, 'name') else None,
+                "assigned_to": issue.assigned_to.name if hasattr(issue, 'assigned_to') else None,
+                "created_on": str(issue.created_on) if hasattr(issue, 'created_on') else None,
+                "updated_on": str(issue.updated_on) if hasattr(issue, 'updated_on') else None,
+                "due_date": str(issue.due_date) if hasattr(issue, 'due_date') else None,
+            })
+
+        if format == "json":
+            return Response(content=json.dumps(issue_data, indent=2), media_type="application/json", headers={"Content-Disposition": f"attachment; filename=project_{project_id}_issues.json"})
+        elif format == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            # Write header
+            if issue_data:
+                writer.writerow(issue_data[0].keys())
+            # Write data
+            for row in issue_data:
+                writer.writerow(row.values())
+            return Response(content=output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=project_{project_id}_issues.csv"})
+        elif format == "excel":
+            return {"message": "Excel export not implemented. Please use CSV or JSON."}
+        elif format == "pdf":
+            return {"message": "PDF export not implemented. Please use CSV or JSON."}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid export format. Supported formats: json, csv, excel, pdf")
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found in Redmine")
+    except Exception as e:
+        print(f"ERROR: Failed to export data for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to export data: {e}")
 
 @app.post("/api/analyze")
 async def analyze_project(request_body: ProjectAnalysisRequest):
@@ -221,46 +220,234 @@ async def analyze_project(request_body: ProjectAnalysisRequest):
 
     if not azure_openai_client:
         print("ERROR: Azure OpenAI client not initialized. AI analysis cannot proceed.")
-        raise HTTPException(
-            status_code=500, detail="Azure OpenAI client not initialized. Check API key and endpoint.")
+        raise HTTPException(status_code=500, detail="Azure OpenAI client not initialized. Check API key and endpoint.")
 
     try:
-        print(
-            f"Attempting to fetch issues for project {project_id} from Redmine...")
+        print(f"Attempting to fetch issues for project {project_id} from Redmine...")
         project_issues = redmine.issue.filter(project_id=project_id, limit=100)
         if not project_issues:
-            print(
-                f"INFO: No issues found for project {project_id}. No analysis performed.")
+            print(f"INFO: No issues found for project {project_id}. No analysis performed.")
             return {"analysis": f"No issues found for project {project_id}. No analysis performed."}
 
         issues_text = ""
         for issue in project_issues:
             issues_text += f"- ID: {issue.id}, Subject: {issue.subject}, Status: {issue.status.name}, Priority: {issue.priority.name}\n"
-
-        print(
-            f"Sending {len(project_issues)} issues to Azure OpenAI for analysis...")
+        
+        print(f"Sending {len(project_issues)} issues to Azure OpenAI for analysis...")
         analysis_result = analyze_redmine_issues_with_openai(issues_text)
         print("AI analysis completed successfully.")
         return {"analysis": analysis_result}
     except ResourceNotFoundError:
-        print(
-            f"ERROR: Project {project_id} not found in Redmine during AI analysis.")
-        raise HTTPException(
-            status_code=404, detail="Project not found in Redmine")
+        print(f"ERROR: Project {project_id} not found in Redmine during AI analysis.")
+        raise HTTPException(status_code=404, detail="Project not found in Redmine")
     except (APIConnectionError, APIStatusError) as e:
         print(f"ERROR: Azure OpenAI API call failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Azure OpenAI API call failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Azure OpenAI API call failed: {e}")
     except Exception as e:
         print(f"ERROR: AI analysis failed for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
 
-
 @app.get("/api/projects/{project_id}/progress-prediction")
-async def get_progress_prediction(project_id: int):
-    """Returns mock progress prediction data for a given project ID."""
-    progress_data = MOCK_PROGRESS_DATA.get(project_id, [])
-    if not progress_data:
-        raise HTTPException(
-            status_code=404, detail="Progress data not found for this project")
-    return {"progress_data": progress_data}
+async def get_project_progress_prediction(project_id: int):
+    """Returns overall project progress prediction data."""
+    try:
+        issues = redmine.issue.filter(project_id=project_id, limit=100)
+        if not issues:
+            raise HTTPException(status_code=404, detail=f"No issues found for project {project_id}")
+
+        # Sort issues by creation date to establish a timeline
+        issues_sorted_by_created = sorted(issues, key=lambda i: i.created_on)
+
+        if not issues_sorted_by_created:
+            return {"progress_data": [], "summary": "No issues to predict progress."}
+
+        # Determine project start and end dates
+        project_start_date = issues_sorted_by_created[0].created_on.date() if isinstance(issues_sorted_by_created[0].created_on, datetime) else issues_sorted_by_created[0].created_on
+        
+        all_due_dates = []
+        for issue in issues:
+            if hasattr(issue, 'due_date') and issue.due_date:
+                if isinstance(issue.due_date, datetime):
+                    all_due_dates.append(issue.due_date.date())
+                elif isinstance(issue.due_date, date):
+                    all_due_dates.append(issue.due_date)
+
+        if not all_due_dates:
+            project_end_date = project_start_date + timedelta(weeks=6) # Fallback if no due dates
+        else:
+            project_end_date = max(all_due_dates)
+
+        today = datetime.now().date()
+
+        # Adjust project_end_date if it's in the past
+        if project_end_date < today:
+            project_end_date = today + timedelta(weeks=2) # Extend prediction 2 weeks into future
+
+        total_duration_days = (project_end_date - project_start_date).days
+        if total_duration_days <= 0:
+            total_duration_days = 1 # Avoid division by zero
+
+        progress_data = []
+        total_issues_count = len(issues)
+
+        # Calculate weekly progress
+        current_week_start = project_start_date
+        week_num = 0
+        while current_week_start <= project_end_date + timedelta(weeks=2): # Go two weeks beyond end for prediction
+            week_num += 1
+            week_end = current_week_start + timedelta(days=6)
+            week_label = f"Week {week_num}"
+
+            # Planned: Straight line from 0% at project_start_date to 100% at project_end_date
+            days_passed_planned = (week_end - project_start_date).days
+            planned_progress = min(100, max(0, (days_passed_planned / total_duration_days) * 100))
+
+            # Actual: Issues completed by this week
+            completed_by_week = [issue for issue in issues if 
+                                 hasattr(issue.status, 'name') and 
+                                 issue.status.name.lower() in ['closed', 'resolved', '完了', '解決'] and 
+                                 (issue.updated_on.date() if isinstance(issue.updated_on, datetime) else issue.updated_on) <= week_end]
+            actual_progress = (len(completed_by_week) / total_issues_count) * 100 if total_issues_count > 0 else 0
+            actual_progress = round(actual_progress) if current_week_start <= today else None
+
+            # Predicted: Simple extrapolation of current velocity
+            predicted_progress_val = None
+            if actual_progress is not None: # If we have actual data for this week
+                predicted_progress_val = actual_progress
+            elif progress_data: # Extrapolate from last known actual progress
+                last_known_actual = 0
+                last_known_week_index = 0
+                for i, pd in enumerate(progress_data):
+                    if pd["actual"] is not None:
+                        last_known_actual = pd["actual"]
+                        last_known_week_index = i
+                
+                # Calculate average weekly velocity from start to last known actual
+                if last_known_week_index > 0:
+                    avg_weekly_velocity = last_known_actual / last_known_week_index
+                else:
+                    avg_weekly_velocity = 0
+                
+                # Project forward
+                projected_progress = last_known_actual + avg_weekly_velocity * (week_num - (last_known_week_index + 1))
+                predicted_progress_val = min(100, max(0, projected_progress))
+            else:
+                predicted_progress_val = 0 # Default if no actual data yet
+
+            progress_data.append({
+                "week": week_label,
+                "planned": round(planned_progress),
+                "actual": actual_progress,
+                "predicted": round(predicted_progress_val) if predicted_progress_val is not None else None,
+            })
+            current_week_start += timedelta(days=7)
+
+        # Generate summary text
+        current_completion_rate = 0
+        if total_issues_count > 0:
+            completed_issues_today = len([issue for issue in issues if hasattr(issue.status, 'name') and issue.status.name.lower() in ['closed', 'resolved', '完了', '解決'] and (issue.updated_on.date() if isinstance(issue.updated_on, datetime) else issue.updated_on) <= today])
+            current_completion_rate = (completed_issues_today / total_issues_count) * 100
+
+        current_planned_progress = 0
+        days_passed_since_start = (today - project_start_date).days
+        if days_passed_since_start > 0:
+            current_planned_progress = min(100, max(0, (days_passed_since_start / total_duration_days) * 100))
+
+        if current_completion_rate >= 100:
+            summary_text = "项目已完成。"
+        elif current_completion_rate >= current_planned_progress - 5: # Within 5% of planned
+            summary_text = "项目按计划进行，预计将按时完成。"
+        elif current_completion_rate < current_planned_progress - 5:
+            summary_text = "项目进度落后于计划，存在延期风险，建议立即采取措施。"
+        else:
+            summary_text = "项目正在进行中，请持续关注进度。"
+
+        return {"progress_data": progress_data, "summary": summary_text}
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Project not found in Redmine")
+    except Exception as e:
+        print(f"ERROR: Failed to get progress prediction for project {project_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get progress prediction: {e}")
+
+@app.get("/api/issues/{issue_id}/progress-prediction")
+async def get_issue_progress_prediction(issue_id: int):
+    """Returns progress prediction data for a single issue."""
+    try:
+        issue = redmine.issue.get(issue_id)
+        if not issue:
+            raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found in Redmine")
+
+        issue_start_date = issue.created_on.date() if isinstance(issue.created_on, datetime) else issue.created_on
+        issue_due_date = None
+        if hasattr(issue, 'due_date') and issue.due_date:
+            issue_due_date = issue.due_date.date() if isinstance(issue.due_date, datetime) else issue.due_date
+        
+        if not issue_due_date:
+            raise HTTPException(status_code=400, detail=f"Issue {issue_id} does not have a due date for prediction.")
+
+        today = datetime.now().date()
+
+        total_duration_days = (issue_due_date - issue_start_date).days
+        if total_duration_days <= 0:
+            total_duration_days = 1 # Avoid division by zero
+
+        progress_data = []
+        summary_text = ""
+
+        # Calculate daily progress for a finer granularity for single issue
+        current_day = issue_start_date
+        day_num = 0
+        while current_day <= issue_due_date + timedelta(days=7): # Go one week beyond due date
+            day_num += 1
+            day_label = current_day.strftime("%Y-%m-%d")
+
+            # Planned: Straight line from 0% at issue_start_date to 100% at issue_due_date
+            days_passed_planned = (current_day - issue_start_date).days
+            planned_progress = min(100, max(0, (days_passed_planned / total_duration_days) * 100))
+
+            # Actual: 0% until updated_on (if status is not new), 100% if closed/resolved by current_day
+            actual_progress = 0
+            is_completed = hasattr(issue.status, 'name') and issue.status.name.lower() in ['closed', 'resolved', '完了', '解決']
+            issue_updated_date = issue.updated_on.date() if hasattr(issue, 'updated_on') and isinstance(issue.updated_on, datetime) else issue.created_on.date()
+
+            if is_completed and issue_updated_date <= current_day:
+                actual_progress = 100
+            elif issue_updated_date <= current_day and issue.status.name.lower() not in ['new', 'open', '新建', '开放']:
+                # Simple linear interpolation for in-progress issues
+                progress_since_start = (current_day - issue_start_date).days
+                actual_progress = min(100, max(0, (progress_since_start / total_duration_days) * 100 * 0.8)) # Assume 80% of planned velocity
+            
+            # Predicted: Assume 100% by due date if not yet completed, otherwise follow actual
+            predicted_progress = actual_progress
+            if current_day > today and not is_completed:
+                # Simple linear projection to 100% by due date
+                days_remaining = (issue_due_date - current_day).days
+                if days_remaining > 0:
+                    predicted_progress = min(100, max(actual_progress, 100 - (days_remaining / total_duration_days) * 100))
+                else:
+                    predicted_progress = 100 # If past due, assume 100% for prediction
+
+            progress_data.append({
+                "week": day_label, # Using day_label for finer granularity
+                "planned": round(planned_progress),
+                "actual": round(actual_progress) if current_day <= today else None,
+                "predicted": round(predicted_progress) if predicted_progress is not None else None,
+            })
+            current_day += timedelta(days=1)
+
+        # Generate summary text for individual issue
+        if is_completed:
+            summary_text = f"工单 {issue.id} 已于 {issue_updated_date} 完成。"
+        elif today > issue_due_date:
+            summary_text = f"工单 {issue.id} 已逾期，原定截止日期为 {issue_due_date}。"
+        elif predicted_progress >= 95:
+            summary_text = f"工单 {issue.id} 预计将按时完成。"
+        else:
+            summary_text = f"工单 {issue.id} 正在进行中，预计完成日期为 {issue_due_date}。"
+
+        return {"progress_data": progress_data, "summary": summary_text}
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Issue not found in Redmine")
+    except Exception as e:
+        print(f"ERROR: Failed to get progress prediction for issue {issue_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get progress prediction for issue: {e}")

@@ -51,13 +51,23 @@ export const exportData = async (projectId, format) => {
   }
 };
 
-export const getProgressPrediction = async (projectId) => {
+export const getProjectProgressPrediction = async (projectId) => {
   try {
     const response = await apiClient.get(`/api/projects/${projectId}/progress-prediction`);
     return response.data;
   } catch (error) {
-    console.error(`Error fetching progress prediction for project ${projectId}:`, error);
-    return { error: error.message || 'Failed to fetch progress prediction' };
+    console.error(`Error fetching project progress prediction for project ${projectId}:`, error);
+    return { error: error.message || 'Failed to fetch project progress prediction' };
+  }
+};
+
+export const getIssueProgressPrediction = async (issueId) => {
+  try {
+    const response = await apiClient.get(`/api/issues/${issueId}/progress-prediction`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching issue progress prediction for issue ${issueId}:`, error);
+    return { error: error.message || 'Failed to fetch issue progress prediction' };
   }
 };
 
