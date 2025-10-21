@@ -383,6 +383,7 @@ async def get_issue_progress_prediction(issue_id: int):
             issue_due_date = issue.due_date.date() if isinstance(issue.due_date, datetime) else issue.due_date
         
         if not issue_due_date:
+            print(f"ERROR: Issue {issue_id} does not have a due date for prediction.")
             raise HTTPException(status_code=400, detail=f"Issue {issue_id} does not have a due date for prediction.")
 
         today = datetime.now().date()
@@ -392,7 +393,6 @@ async def get_issue_progress_prediction(issue_id: int):
             total_duration_days = 1 # Avoid division by zero
 
         progress_data = []
-        summary_text = ""
 
         # Calculate daily progress for a finer granularity for single issue
         current_day = issue_start_date
@@ -436,6 +436,9 @@ async def get_issue_progress_prediction(issue_id: int):
             current_day += timedelta(days=1)
 
         # Generate summary text for individual issue
+        is_completed = hasattr(issue.status, 'name') and issue.status.name.lower() in ['closed', 'resolved', '完了', '解決']
+        issue_updated_date = issue.updated_on.date() if hasattr(issue, 'updated_on') and isinstance(issue.updated_on, datetime) else issue.created_on.date()
+
         if is_completed:
             summary_text = f"工单 {issue.id} 已于 {issue_updated_date} 完成。"
         elif today > issue_due_date:
@@ -448,6 +451,9 @@ async def get_issue_progress_prediction(issue_id: int):
         return {"progress_data": progress_data, "summary": summary_text}
     except ResourceNotFoundError:
         raise HTTPException(status_code=404, detail="Issue not found in Redmine")
+    except HTTPException as e: # Catch HTTPException directly
+        print(f"ERROR: Progress prediction for issue {issue_id} failed: {e.detail}")
+        raise e # Re-raise the HTTPException
     except Exception as e:
         print(f"ERROR: Failed to get progress prediction for issue {issue_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get progress prediction for issue: {e}")

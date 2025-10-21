@@ -96,7 +96,12 @@ const ProgressPrediction = ({ projects, selectedProject, setSelectedProject, loa
         setIssuePredictionSummary("");
       }
     } catch (err) {
-      setIssuePredictionError('課題進捗予測データの取得に失敗しました');
+      // Check for specific error message from backend
+      if (err.response && err.response.data && err.response.data.detail && err.response.data.detail.includes('does not have a due date')) {
+        setIssuePredictionError(`課題 #${issueId} には予測に必要な期日が設定されていません。`);
+      } else {
+        setIssuePredictionError(err.message || '課題進捗予測データの取得に失敗しました');
+      }
       console.error(err);
     } finally {
       setLoadingIssuePrediction(false);
