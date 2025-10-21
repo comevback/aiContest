@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import time
@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from redminelib import Redmine
 from redminelib.exceptions import AuthError, ResourceNotFoundError
 from openai import AzureOpenAI, APIConnectionError, APIStatusError
-import re  # Added for strip_markdown_fence
+import re
 import csv
 import io
 from datetime import datetime, timedelta, date
@@ -16,35 +16,19 @@ import json
 # Load environment variables from .env file
 load_dotenv()
 
-REDMINE_URL = os.getenv("REDMINE_URL")
-REDMINE_API_KEY = os.getenv("REDMINE_API_KEY")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_API_VERSION = "2024-12-01-preview"  # Updated API version
-AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini"  # Updated model name
-
-if not REDMINE_URL or not REDMINE_API_KEY:
-    raise ValueError(
-        "REDMINE_URL and REDMINE_API_KEY must be set in the .env file")
-
-try:
-    redmine = Redmine(REDMINE_URL, key=REDMINE_API_KEY)
-    print(f"Successfully connected to Redmine at {REDMINE_URL}")
-except AuthError:
-    print("ERROR: Failed to authenticate with Redmine. Check your API key.")
-    raise ValueError(
-        "Failed to authenticate with Redmine. Check your API key.")
-except Exception as e:
-    print(f"ERROR: Failed to connect to Redmine at {REDMINE_URL}: {e}")
-    raise ValueError(f"Failed to connect to Redmine: {e}")
+# REDMINE_URL and REDMINE_API_KEY are now expected to be passed via headers
 
 # Initialize Azure OpenAI client if credentials are provided
+AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_API_VERSION = "2024-12-01-preview"
+AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini"
+
 azure_openai_client = None
 if AZURE_OPENAI_API_KEY:
     try:
         azure_openai_client = AzureOpenAI(
             api_key=AZURE_OPENAI_API_KEY,
             api_version=AZURE_OPENAI_API_VERSION,
-            # Hardcoded as per user's working snippet
             azure_endpoint="https://after-mgzd767o-eastus2.cognitiveservices.azure.com/"
         )
         print("Successfully initialized Azure OpenAI client.")
@@ -58,10 +42,10 @@ app = FastAPI()
 # Enable CORS for all origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*", "X-Redmine-Url", "X-Redmine-Api-Key"],
 )
 
 
@@ -77,13 +61,11 @@ def strip_markdown_fence(text: str) -> str:
         return text
     text = text.strip()
 
-    # ```markdown または ```md または ``` で始まるブロック全体に一致
     pattern = r"^```(?:markdown|md)?\s*([\s\S]*?)\s*```$"
     match = re.match(pattern, text, re.MULTILINE)
     if match:
         return match.group(1).strip()
 
-    # フェンスで囲まれたコードブロック全体ではないが、部分的に囲まれている場合は、置換で削除することもできます
     return re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
 
 
@@ -151,11 +133,43 @@ def analyze_redmine_issues_with_openai(issues_str: str) -> str:
         raise e
 
 
-@app.get("/api/projects")
-async def get_projects():
-    """Returns a list of projects from Redmine."""
+redmine_instance_cache = {}
+
+# Helper function to get Redmine instance
+def get_redmine_instance(redmine_url: str, redmine_api_key: str):
+    if not redmine_url or not redmine_api_key:
+        raise HTTPException(
+            status_code=400, detail="Redmine URL and API Key are required.")
+
+    # Create a unique key for the cache
+    cache_key = f"{redmine_url}-{redmine_api_key}"
+
+    if cache_key in redmine_instance_cache:
+        return redmine_instance_cache[cache_key]
+
     try:
-        projects = redmine.project.all(limit=100)  # Fetch up to 100 projects
+        redmine = Redmine(redmine_url, key=redmine_api_key)
+        # Test connection to ensure credentials are valid
+        redmine.auth() # This will raise AuthError if credentials are bad
+        redmine_instance_cache[cache_key] = redmine # Store in cache
+        return redmine
+    except AuthError:
+        raise HTTPException(
+            status_code=401, detail="Failed to authenticate with Redmine. Check your API key.")
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to connect to Redmine: {e}")
+
+
+@app.get("/api/projects")
+async def get_projects(
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
+    """Returns a list of projects from Redmine."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
+    try:
+        projects = redmine.project.all(limit=100)
         project_list = []
         for project in projects:
             project_list.append(
@@ -168,11 +182,16 @@ async def get_projects():
 
 
 @app.get("/api/projects/{project_id}/issues")
-async def get_issues(project_id: int):
+async def get_issues(
+    project_id: int,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
     """Returns issues for a given project ID from Redmine."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     try:
         issues = redmine.issue.filter(
-            project_id=project_id, limit=100)  # Fetch up to 100 issues
+            project_id=project_id, limit=100)
         issue_list = []
         for issue in issues:
             issue_data = {
@@ -199,8 +218,14 @@ async def get_issues(project_id: int):
 
 
 @app.get("/api/projects/{project_id}/export/{format}")
-async def export_data(project_id: int, format: str):
+async def export_data(
+    project_id: int,
+    format: str,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
     """Exports project data in various formats."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     try:
         issues = redmine.issue.filter(project_id=project_id, limit=100)
         if not issues:
@@ -249,8 +274,13 @@ async def export_data(project_id: int, format: str):
 
 
 @app.post("/api/analyze")
-async def analyze_project(request_body: ProjectAnalysisRequest):
+async def analyze_project(
+    request_body: ProjectAnalysisRequest,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
     """Analyzes project issues using Azure OpenAI."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     project_id = request_body.project_id
 
     if not azure_openai_client:
@@ -291,8 +321,13 @@ async def analyze_project(request_body: ProjectAnalysisRequest):
 
 
 @app.get("/api/projects/{project_id}/progress-prediction")
-async def get_project_progress_prediction(project_id: int):
+async def get_project_progress_prediction(
+    project_id: int,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
     """Returns overall project progress prediction data."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     try:
         issues = redmine.issue.filter(project_id=project_id, limit=100)
         if not issues:
@@ -429,8 +464,13 @@ async def get_project_progress_prediction(project_id: int):
 
 
 @app.get("/api/issues/{issue_id}/progress-prediction")
-async def get_issue_progress_prediction(issue_id: int):
+async def get_issue_progress_prediction(
+    issue_id: int,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
     """Returns progress prediction data for a single issue."""
+    redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     try:
         issue = redmine.issue.get(issue_id)
         if not issue:

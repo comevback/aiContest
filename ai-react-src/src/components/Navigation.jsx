@@ -1,6 +1,6 @@
 import React from 'react';
 
-const Navigation = ({ currentPage, setCurrentPage }) => {
+const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
   const navItems = [
     { id: 'dashboard', label: 'ダッシュボード', icon: '⊙', color: '#4a90e2' },
     { id: 'issue-analysis', label: '課題分析', icon: '🔍', color: '#50c878' },
@@ -32,6 +32,15 @@ const Navigation = ({ currentPage, setCurrentPage }) => {
             <span>{item.label}</span>
           </button>
         ))}
+        {/* Add the "Switch Redmine User" button */}
+        <button
+          className="nav-button"
+          onClick={onLogout}
+          style={{ marginLeft: '20px', backgroundColor: '#e74c3c', color: 'white' }} // Example styling
+        >
+          <span>🚪</span>
+          <span>Redmineユーザー切替</span>
+        </button>
       </div>
     </nav>
   );

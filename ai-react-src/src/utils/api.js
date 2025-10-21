@@ -2,12 +2,34 @@ import axios from 'axios';
 
 const API_BASE = 'http://localhost:8000';
 
+let redmineUrl = '';
+let redmineApiKey = '';
+
+export const setRedmineCredentials = (url, apiKey) => {
+  redmineUrl = url;
+  redmineApiKey = apiKey;
+};
+
 const apiClient = axios.create({
   baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+// Add an interceptor to include Redmine credentials in headers
+apiClient.interceptors.request.use(
+  (config) => {
+    if (redmineUrl && redmineApiKey) {
+      config.headers['X-Redmine-Url'] = redmineUrl;
+      config.headers['X-Redmine-Api-Key'] = redmineApiKey;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
 
 export const getProjects = async () => {
   try {
