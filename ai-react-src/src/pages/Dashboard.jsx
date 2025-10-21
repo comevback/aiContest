@@ -2,46 +2,26 @@ import React, { useState, useEffect } from 'react';
 import SummaryCard from '../components/SummaryCard';
 import TicketItem from '../components/TicketItem';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { getProjects, getIssues } from '../utils/api';
+import { getIssues } from '../utils/api';
 
-const Dashboard = () => {
+const Dashboard = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [issues, setIssues] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [loadingIssues, setLoadingIssues] = useState(false);
+  const [issuesError, setIssuesError] = useState(null);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const data = await getProjects();
-      if (data.error) {
-        setError(data.error);
-      } else if (data.projects) {
-        setProjects(data.projects);
-        if (data.projects.length > 0) {
-          setSelectedProject(data.projects[0].id);
-          fetchIssues(data.projects[0].id); // Fetch issues for the first project
-        }
-      }
-    } catch (err) {
-      setError('プロジェクトの取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (selectedProject) {
+      fetchIssues(selectedProject);
     }
-  };
+  }, [selectedProject]);
 
   const fetchIssues = async (projectId) => {
+    setLoadingIssues(true);
+    setIssuesError(null);
     try {
-      setLoading(true);
       const data = await getIssues(projectId);
       if (data.error) {
-        setError(data.error);
+        setIssuesError(data.error);
         setIssues([]);
       } else if (data.issues) {
         setIssues(data.issues);
@@ -49,10 +29,10 @@ const Dashboard = () => {
         setIssues([]);
       }
     } catch (err) {
-      setError('課題の取得に失敗しました');
+      setIssuesError('課題の取得に失敗しました');
       console.error(err);
     } finally {
-      setLoading(false);
+      setLoadingIssues(false);
     }
   };
 
@@ -109,16 +89,22 @@ const Dashboard = () => {
   const statusData = getStatusDistribution();
   const priorityData = getPriorityDistribution();
 
-  if (loading && issues.length === 0) {
+  if (loadingProjects || loadingIssues) {
     return <div className="loading">読み込み中...</div>;
+  }
+
+  if (projectsError) {
+    return <div className="error">{projectsError}</div>;
+  }
+
+  if (issuesError) {
+    return <div className="error">{issuesError}</div>;
   }
 
   return (
     <div className="dashboard-container">
       <h1 className="page-title">プロジェクトダッシュボード</h1>
       <p className="page-subtitle">Redmineチケット状況の可視化</p>
-
-      {error && <div className="error">{error}</div>}
 
       {/* Project Selector */}
       {projects.length > 0 && (
@@ -127,8 +113,7 @@ const Dashboard = () => {
           <select
             value={selectedProject || ''}
             onChange={(e) => {
-              setSelectedProject(e.target.value);
-              fetchIssues(e.target.value);
+              setSelectedProject(parseInt(e.target.value));
             }}
             style={{
               padding: '8px 12px',
@@ -248,4 +233,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-

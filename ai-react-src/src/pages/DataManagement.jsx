@@ -1,32 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { getProjects, exportData } from '../utils/api';
+import { exportData } from '../utils/api';
 
-const DataManagement = () => {
-  const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
+const DataManagement = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [exportStatus, setExportStatus] = useState(null);
-
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const data = await getProjects();
-      if (data.error) {
-        setError(data.error);
-      } else if (data.projects) {
-        setProjects(data.projects);
-        if (data.projects.length > 0) {
-          setSelectedProject(data.projects[0].id);
-        }
-      }
-    } catch (err) {
-      setError('プロジェクトの取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleExport = async (format) => {
     if (!selectedProject) {
@@ -34,6 +11,7 @@ const DataManagement = () => {
       return;
     }
     setExportStatus(`${format.toUpperCase()} 形式でエクスポートしています...`);
+    setLoading(true);
     try {
       const result = await exportData(selectedProject, format);
       if (result.error) {
@@ -44,16 +22,24 @@ const DataManagement = () => {
     } catch (err) {
       setExportStatus(`エクスポート中にエラーが発生しました: ${err.message}`);
       console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
+  if (loadingProjects) {
+    return <div className="loading">プロジェクトを読み込み中...</div>;
+  }
+
+  if (projectsError) {
+    return <div className="error">{projectsError}</div>;
+  }
 
   return (
     <div className="dashboard-container">
       <h1 className="page-title">データ管理</h1>
       <p className="page-subtitle">プロジェクトデータのエクスポートと管理</p>
 
-      {error && <div className="error">{error}</div>}
       {exportStatus && (
         <div style={{
           backgroundColor: '#e8f5e9',
@@ -79,7 +65,7 @@ const DataManagement = () => {
         </label>
         <select
           value={selectedProject || ''}
-          onChange={(e) => setSelectedProject(e.target.value)}
+          onChange={(e) => setSelectedProject(parseInt(e.target.value))}
           style={{
             padding: '8px 12px',
             borderRadius: '6px',
@@ -119,13 +105,15 @@ const DataManagement = () => {
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: '500',
               transition: 'background-color 0.3s ease',
+              opacity: loading ? 0.6 : 1,
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#3a7bc8'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#4a90e2'}
+            onMouseEnter={(e) => { if (!loading) e.target.style.backgroundColor = '#3a7bc8'; }}
+            onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#4a90e2'; }}
+            disabled={loading}
           >
             CSV でエクスポート
           </button>
@@ -137,13 +125,15 @@ const DataManagement = () => {
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: '500',
               transition: 'background-color 0.3s ease',
+              opacity: loading ? 0.6 : 1,
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#40b867'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#50c878'}
+            onMouseEnter={(e) => { if (!loading) e.target.style.backgroundColor = '#40b867'; }}
+            onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#50c878'; }}
+            disabled={loading}
           >
             Excel でエクスポート
           </button>
@@ -155,13 +145,15 @@ const DataManagement = () => {
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: '500',
               transition: 'background-color 0.3s ease',
+              opacity: loading ? 0.6 : 1,
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#e59512'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#f5a623'}
+            onMouseEnter={(e) => { if (!loading) e.target.style.backgroundColor = '#e59512'; }}
+            onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#f5a623'; }}
+            disabled={loading}
           >
             JSON でエクスポート
           </button>
@@ -173,13 +165,15 @@ const DataManagement = () => {
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer',
+              cursor: loading ? 'not-allowed' : 'pointer',
               fontSize: '14px',
               fontWeight: '500',
               transition: 'background-color 0.3s ease',
+              opacity: loading ? 0.6 : 1,
             }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#8b49a6'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#9b59b6'}
+            onMouseEnter={(e) => { if (!loading) e.target.style.backgroundColor = '#8b49a6'; }}
+            onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#9b59b6'; }}
+            disabled={loading}
           >
             PDF でエクスポート
           </button>
@@ -228,4 +222,3 @@ const DataManagement = () => {
 };
 
 export default DataManagement;
-

@@ -1,46 +1,25 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { getProjects, getProgressPrediction } from '../utils/api';
+import { getProgressPrediction } from '../utils/api';
 
-const ProgressPrediction = () => {
-  const [projects, setProjects] = useState([]);
-  const [selectedProject, setSelectedProject] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
+const ProgressPrediction = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
+  const [loadingPrediction, setLoadingPrediction] = useState(false);
+  const [predictionError, setPredictionError] = useState(null);
   const [progressData, setProgressData] = useState([]);
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
-
-  const fetchProjects = async () => {
-    try {
-      setLoading(true);
-      const data = await getProjects();
-      if (data.error) {
-        setError(data.error);
-      } else if (data.projects) {
-        setProjects(data.projects);
-        if (data.projects.length > 0) {
-          setSelectedProject(data.projects[0].id);
-          fetchProgressData(data.projects[0].id);
-        }
-      }
-    } catch (err) {
-      setError('プロジェクトの取得に失敗しました');
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (selectedProject) {
+      fetchProgressData(selectedProject);
     }
-  };
+  }, [selectedProject]);
 
   const fetchProgressData = async (projectId) => {
+    setLoadingPrediction(true);
+    setPredictionError(null);
     try {
-      setLoading(true);
       const data = await getProgressPrediction(projectId);
       if (data.error) {
-        setError(data.error);
+        setPredictionError(data.error);
         setProgressData([]);
       } else if (data.progress_data) {
         setProgressData(data.progress_data);
@@ -48,19 +27,29 @@ const ProgressPrediction = () => {
         setProgressData([]);
       }
     } catch (err) {
-      setError('進捗予測データの取得に失敗しました');
+      setPredictionError('進捗予測データの取得に失敗しました');
       console.error(err);
     } finally {
-      setLoading(false);
+      setLoadingPrediction(false);
     }
   };
+
+  if (loadingProjects || loadingPrediction) {
+    return <div className="loading">読み込み中...</div>;
+  }
+
+  if (projectsError) {
+    return <div className="error">{projectsError}</div>;
+  }
+
+  if (predictionError) {
+    return <div className="error">{predictionError}</div>;
+  }
 
   return (
     <div className="dashboard-container">
       <h1 className="page-title">進捗予測</h1>
       <p className="page-subtitle">プロジェクト進捗の予測分析</p>
-
-      {error && <div className="error">{error}</div>}
 
       {projects.length > 0 && (
         <div style={{
@@ -75,7 +64,7 @@ const ProgressPrediction = () => {
           </label>
           <select
             value={selectedProject || ''}
-            onChange={(e) => setSelectedProject(e.target.value)}
+            onChange={(e) => setSelectedProject(parseInt(e.target.value))}
             style={{
               padding: '8px 12px',
               borderRadius: '6px',
@@ -157,4 +146,3 @@ const ProgressPrediction = () => {
 };
 
 export default ProgressPrediction;
-
