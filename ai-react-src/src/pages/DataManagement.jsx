@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { getProjects, exportData } from '../utils/api';
 
 const DataManagement = () => {
   const [projects, setProjects] = useState([]);
@@ -8,20 +8,16 @@ const DataManagement = () => {
   const [error, setError] = useState(null);
   const [exportStatus, setExportStatus] = useState(null);
 
-  const API_BASE = 'http://localhost:8000';
-
-  useEffect(() => {
-    fetchProjects();
-  }, []);
-
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE}/api/projects`);
-      if (response.data.projects) {
-        setProjects(response.data.projects);
-        if (response.data.projects.length > 0) {
-          setSelectedProject(response.data.projects[0].id);
+      const data = await getProjects();
+      if (data.error) {
+        setError(data.error);
+      } else if (data.projects) {
+        setProjects(data.projects);
+        if (data.projects.length > 0) {
+          setSelectedProject(data.projects[0].id);
         }
       }
     } catch (err) {
@@ -32,12 +28,25 @@ const DataManagement = () => {
     }
   };
 
-  const handleExport = (format) => {
+  const handleExport = async (format) => {
+    if (!selectedProject) {
+      setExportStatus('プロジェクトを選択してください。');
+      return;
+    }
     setExportStatus(`${format.toUpperCase()} 形式でエクスポートしています...`);
-    setTimeout(() => {
-      setExportStatus(`${format.toUpperCase()} 形式でのエクスポートが完了しました`);
-    }, 1500);
+    try {
+      const result = await exportData(selectedProject, format);
+      if (result.error) {
+        setExportStatus(`エクスポート失敗: ${result.error}`);
+      } else {
+        setExportStatus(`${format.toUpperCase()} 形式でのエクスポートが完了しました: ${result.message}`);
+      }
+    } catch (err) {
+      setExportStatus(`エクスポート中にエラーが発生しました: ${err.message}`);
+      console.error(err);
+    }
   };
+
 
   return (
     <div className="dashboard-container">

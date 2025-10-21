@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SummaryCard from '../components/SummaryCard';
 import TicketItem from '../components/TicketItem';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { getProjects } from '../utils/api';
+import { getProjects, getIssues } from '../utils/api';
 
 const Dashboard = () => {
   const [issues, setIssues] = useState([]);
@@ -25,7 +25,7 @@ const Dashboard = () => {
         setProjects(data.projects);
         if (data.projects.length > 0) {
           setSelectedProject(data.projects[0].id);
-          setIssues(generateMockIssues());
+          fetchIssues(data.projects[0].id); // Fetch issues for the first project
         }
       }
     } catch (err) {
@@ -39,47 +39,21 @@ const Dashboard = () => {
   const fetchIssues = async (projectId) => {
     try {
       setLoading(true);
-      // Since the API doesn't have a direct endpoint to get issues, we'll use mock data
-      setIssues(generateMockIssues());
+      const data = await getIssues(projectId);
+      if (data.error) {
+        setError(data.error);
+        setIssues([]);
+      } else if (data.issues) {
+        setIssues(data.issues);
+      } else {
+        setIssues([]);
+      }
     } catch (err) {
       setError('課題の取得に失敗しました');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateMockIssues = () => {
-    return [
-      {
-        id: 'ISSUE-001',
-        subject: 'ダッシュボード機能の実装',
-        status: { name: 'オープン' },
-        priority: { name: '高' },
-        assigned_to: { name: 'User A' },
-      },
-      {
-        id: 'ISSUE-002',
-        subject: 'データベース最適化',
-        status: { name: '進行中' },
-        priority: { name: '中' },
-        assigned_to: { name: 'User B' },
-      },
-      {
-        id: 'ISSUE-003',
-        subject: 'ユーザー認証機能',
-        status: { name: '完了済み' },
-        priority: { name: '高' },
-        assigned_to: { name: 'User C' },
-      },
-      {
-        id: 'ISSUE-004',
-        subject: 'データバックアップ機能の実装',
-        status: { name: 'オープン' },
-        priority: { name: '高' },
-        assigned_to: { name: 'User A' },
-      },
-    ];
   };
 
   const calculateStats = () => {

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { getProjects, getProgressPrediction } from '../utils/api';
 
 const ProgressPrediction = () => {
   const [projects, setProjects] = useState([]);
@@ -8,7 +8,7 @@ const ProgressPrediction = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const API_BASE = 'http://localhost:8000';
+  const [progressData, setProgressData] = useState([]);
 
   useEffect(() => {
     fetchProjects();
@@ -17,11 +17,14 @@ const ProgressPrediction = () => {
   const fetchProjects = async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE}/api/projects`);
-      if (response.data.projects) {
-        setProjects(response.data.projects);
-        if (response.data.projects.length > 0) {
-          setSelectedProject(response.data.projects[0].id);
+      const data = await getProjects();
+      if (data.error) {
+        setError(data.error);
+      } else if (data.projects) {
+        setProjects(data.projects);
+        if (data.projects.length > 0) {
+          setSelectedProject(data.projects[0].id);
+          fetchProgressData(data.projects[0].id);
         }
       }
     } catch (err) {
@@ -32,19 +35,25 @@ const ProgressPrediction = () => {
     }
   };
 
-  // Mock data for progress prediction
-  const getMockProgressData = () => {
-    return [
-      { week: '第1週', planned: 20, actual: 18, predicted: 18 },
-      { week: '第2週', planned: 40, actual: 35, predicted: 36 },
-      { week: '第3週', planned: 60, actual: 52, predicted: 58 },
-      { week: '第4週', planned: 80, actual: 70, predicted: 75 },
-      { week: '第5週', planned: 100, actual: null, predicted: 88 },
-      { week: '第6週', planned: 100, actual: null, predicted: 98 },
-    ];
+  const fetchProgressData = async (projectId) => {
+    try {
+      setLoading(true);
+      const data = await getProgressPrediction(projectId);
+      if (data.error) {
+        setError(data.error);
+        setProgressData([]);
+      } else if (data.progress_data) {
+        setProgressData(data.progress_data);
+      } else {
+        setProgressData([]);
+      }
+    } catch (err) {
+      setError('進捗予測データの取得に失敗しました');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  const progressData = getMockProgressData();
 
   return (
     <div className="dashboard-container">
