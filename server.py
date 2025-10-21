@@ -145,10 +145,10 @@ def analyze_with_gemini(issues_str):
     )
 
     try:
-        gemini_response = model.generate_content(prompt)
+        # gemini_response = model.generate_content(prompt)
         open_ai_response = resp.choices[0].message.content
         openai_clean = strip_markdown_fence(open_ai_response)
-        print(gemini_response.text)
+        # print(gemini_response.text)
         print(open_ai_response)
         return openai_clean
     except Exception as e:
