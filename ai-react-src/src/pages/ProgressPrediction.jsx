@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getProgressPrediction } from '../utils/api';
+import { ClipLoader } from 'react-spinners';
 
 const ProgressPrediction = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [loadingPrediction, setLoadingPrediction] = useState(false);
@@ -35,7 +36,12 @@ const ProgressPrediction = ({ projects, selectedProject, setSelectedProject, loa
   };
 
   if (loadingProjects || loadingPrediction) {
-    return <div className="loading">読み込み中...</div>;
+    return (
+      <div className="loading-container">
+        <ClipLoader color="#4A90E2" size={50} />
+        <p>読み込み中...</p>
+      </div>
+    );
   }
 
   if (projectsError) {

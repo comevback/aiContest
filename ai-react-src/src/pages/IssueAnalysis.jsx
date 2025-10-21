@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { analyzeProject } from '../utils/api';
+import ReactMarkdown from 'react-markdown';
+import { ClipLoader } from 'react-spinners';
 
 const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [analysis, setAnalysis] = useState(null);
@@ -28,7 +30,12 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
   };
 
   if (loadingProjects) {
-    return <div className="loading">プロジェクトを読み込み中...</div>;
+    return (
+      <div className="loading-container">
+        <ClipLoader color="#4A90E2" size={50} />
+        <p>プロジェクトを読み込み中...</p>
+      </div>
+    );
   }
 
   if (projectsError) {
@@ -84,8 +91,9 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
       </div>
 
       {loadingAnalysis && (
-        <div className="loading">
-          分析中...
+        <div className="loading-container">
+          <ClipLoader color="#4A90E2" size={50} />
+          <p>分析中...</p>
         </div>
       )}
 
@@ -93,7 +101,7 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
         <div className="analysis-result">
           <h2>分析結果</h2>
           <div className="analysis-result-content">
-            {analysis}
+            <ReactMarkdown>{analysis}</ReactMarkdown>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import SummaryCard from '../components/SummaryCard';
 import TicketItem from '../components/TicketItem';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { getIssues } from '../utils/api';
+import { ClipLoader } from 'react-spinners';
 
 const Dashboard = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [issues, setIssues] = useState([]);
@@ -90,7 +91,12 @@ const Dashboard = ({ projects, selectedProject, setSelectedProject, loadingProje
   const priorityData = getPriorityDistribution();
 
   if (loadingProjects || loadingIssues) {
-    return <div className="loading">読み込み中...</div>;
+    return (
+      <div className="loading-container">
+        <ClipLoader color="#4A90E2" size={50} />
+        <p>読み込み中...</p>
+      </div>
+    );
   }
 
   if (projectsError) {

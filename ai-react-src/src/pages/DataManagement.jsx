@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { exportData } from '../utils/api';
+import { ClipLoader } from 'react-spinners';
 
 const DataManagement = ({ projects, selectedProject, setSelectedProject, loadingProjects, projectsError }) => {
   const [loading, setLoading] = useState(false);
@@ -28,7 +29,12 @@ const DataManagement = ({ projects, selectedProject, setSelectedProject, loading
   };
 
   if (loadingProjects) {
-    return <div className="loading">プロジェクトを読み込み中...</div>;
+    return (
+      <div className="loading-container">
+        <ClipLoader color="#4A90E2" size={50} />
+        <p>プロジェクトを読み込み中...</p>
+      </div>
+    );
   }
 
   if (projectsError) {

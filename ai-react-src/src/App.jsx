@@ -6,6 +6,7 @@ import IssueAnalysis from './pages/IssueAnalysis';
 import ProgressPrediction from './pages/ProgressPrediction';
 import DataManagement from './pages/DataManagement';
 import { getProjects } from './utils/api';
+import { ClipLoader } from 'react-spinners';
 
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard');
@@ -65,7 +66,10 @@ function App() {
       <Navigation currentPage={currentPage} setCurrentPage={setCurrentPage} />
       <main className="main-content">
         {loadingProjects ? (
-          <div className="loading">プロジェクトを読み込み中...</div>
+          <div className="loading-container">
+            <ClipLoader color="#4A90E2" size={50} />
+            <p>プロジェクトを読み込み中...</p>
+          </div>
         ) : projectsError ? (
           <div className="error">{projectsError}</div>
         ) : (

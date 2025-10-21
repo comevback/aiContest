@@ -398,13 +398,20 @@ body {
 }
 
 /* Loading and Error States */
-.loading {
+.loading-container {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  min-height: 300px;
+  width: 100%;
+  flex: 1; /* Allow it to take available space */
+  min-height: 300px; /* Ensure some height even if content is small */
   color: #999;
   font-size: 16px;
+}
+
+.loading-container p {
+  margin-top: 15px;
 }
 
 .error {
