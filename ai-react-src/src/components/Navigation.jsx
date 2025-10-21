@@ -17,7 +17,7 @@ const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
         }}>
           <div className="navbar-logo-icon">SPA</div>
           <span>SPAシステム</span>
-          <span className="version-badge">プロトタイプ v1.0</span>
+          <span className="version-badge">v1.0</span>
         </a>
       </div>
       <div className="nav-buttons">
