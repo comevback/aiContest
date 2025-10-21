@@ -2,10 +2,10 @@ import React from 'react';
 
 const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
   const navItems = [
-    { id: 'dashboard', label: 'ダッシュボード', icon: '⊙', color: '#4a90e2' },
-    { id: 'issue-analysis', label: '課題分析', icon: '🔍', color: '#50c878' },
-    { id: 'progress-prediction', label: '進捗予測', icon: '⏱', color: '#f5a623' },
-    { id: 'data-management', label: 'データ管理', icon: '📤', color: '#9b59b6' },
+    { id: 'dashboard', label: 'ダッシュボード', icon: '', color: '#4a90e2' },
+    { id: 'issue-analysis', label: '課題分析', icon: '', color: '#50c878' },
+    { id: 'progress-prediction', label: '進捗予測', icon: '', color: '#f5a623' },
+    { id: 'data-management', label: 'データ管理', icon: '', color: '#9b59b6' },
   ];
 
   return (
@@ -17,7 +17,7 @@ const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
         }}>
           <div className="navbar-logo-icon">SPA</div>
           <span>SPAシステム</span>
-          <span className="version-badge">v1.0</span>
+          <span className="version-badge">v0.1</span>
         </a>
       </div>
       <div className="nav-buttons">
