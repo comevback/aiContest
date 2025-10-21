@@ -38,8 +38,7 @@ const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
           onClick={onLogout}
           style={{ marginLeft: '20px', backgroundColor: '#e74c3c', color: 'white' }} // Example styling
         >
-          <span>🚪</span>
-          <span>Redmineユーザー切替</span>
+          <span>Log Out</span>
         </button>
       </div>
     </nav>
