@@ -121,7 +121,7 @@ const DataManagement = ({ projects, selectedProject, setSelectedProject, loading
             onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#4a90e2'; }}
             disabled={loading}
           >
-            CSV でエクスポート
+            CSVでエクスポート
           </button>
           <button
             onClick={() => handleExport('excel')}
@@ -141,7 +141,7 @@ const DataManagement = ({ projects, selectedProject, setSelectedProject, loading
             onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#50c878'; }}
             disabled={loading}
           >
-            Excel でエクスポート
+            Excelでエクスポート
           </button>
           <button
             onClick={() => handleExport('json')}
@@ -161,7 +161,7 @@ const DataManagement = ({ projects, selectedProject, setSelectedProject, loading
             onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#f5a623'; }}
             disabled={loading}
           >
-            JSON でエクスポート
+            JSONでエクスポート
           </button>
           <button
             onClick={() => handleExport('pdf')}
@@ -181,7 +181,7 @@ const DataManagement = ({ projects, selectedProject, setSelectedProject, loading
             onMouseLeave={(e) => { if (!loading) e.target.style.backgroundColor = '#9b59b6'; }}
             disabled={loading}
           >
-            PDF でエクスポート
+            PDFでエクスポート
           </button>
         </div>
       </div>

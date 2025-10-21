@@ -45,7 +45,7 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
   return (
     <div className="dashboard-container">
       <h1 className="page-title">課題分析</h1>
-      <p className="page-subtitle">AI による Redmine 工単の詳細分析</p>
+      <p className="page-subtitle">AIによるRedmineチケットの詳細分析</p>
 
       {analysisError && <div className="error">{analysisError}</div>}
 

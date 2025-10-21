@@ -16,7 +16,7 @@ const Navigation = ({ currentPage, setCurrentPage }) => {
           setCurrentPage('dashboard');
         }}>
           <div className="navbar-logo-icon">SPA</div>
-          <span>SPA システム</span>
+          <span>SPAシステム</span>
           <span className="version-badge">プロトタイプ v1.0</span>
         </a>
       </div>
