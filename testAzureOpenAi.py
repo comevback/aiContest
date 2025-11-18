@@ -4,15 +4,17 @@ from openai import AzureOpenAI
 
 load_dotenv()
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_API_KEY")
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
 
 client = AzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    azure_endpoint="https://after-mgzd767o-eastus2.cognitiveservices.azure.com/",
-    api_version="2024-12-01-preview"
+    api_key=AZURE_OPENAI_KEY,
+    api_version=AZURE_OPENAI_API_VERSION,
 )
 
 resp = client.chat.completions.create(
-    model="gpt-4o-mini",  # 写部署名
+    model=AZURE_OPENAI_DEPLOYMENT_NAME,
     messages=[{"role": "user", "content": "用一句话介绍Azure OpenAI"}]
 )
 print(resp.choices[0].message.content)

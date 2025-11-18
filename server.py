@@ -20,8 +20,10 @@ load_dotenv()
 
 # Initialize Azure OpenAI client if credentials are provided
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_API_VERSION = "2024-12-01-preview"
-AZURE_OPENAI_DEPLOYMENT_NAME = "gpt-4o-mini"
+AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
+AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv(
+    "AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini-xuxiang")
 
 azure_openai_client = None
 if AZURE_OPENAI_API_KEY:
@@ -29,7 +31,7 @@ if AZURE_OPENAI_API_KEY:
         azure_openai_client = AzureOpenAI(
             api_key=AZURE_OPENAI_API_KEY,
             api_version=AZURE_OPENAI_API_VERSION,
-            azure_endpoint="https://after-mgzd767o-eastus2.cognitiveservices.azure.com/"
+            azure_endpoint=AZURE_OPENAI_ENDPOINT,
         )
         print("Successfully initialized Azure OpenAI client.")
     except Exception as e:
@@ -136,6 +138,8 @@ def analyze_redmine_issues_with_openai(issues_str: str) -> str:
 redmine_instance_cache = {}
 
 # Helper function to get Redmine instance
+
+
 def get_redmine_instance(redmine_url: str, redmine_api_key: str):
     if not redmine_url or not redmine_api_key:
         raise HTTPException(
@@ -150,8 +154,8 @@ def get_redmine_instance(redmine_url: str, redmine_api_key: str):
     try:
         redmine = Redmine(redmine_url, key=redmine_api_key)
         # Test connection to ensure credentials are valid
-        redmine.auth() # This will raise AuthError if credentials are bad
-        redmine_instance_cache[cache_key] = redmine # Store in cache
+        redmine.auth()  # This will raise AuthError if credentials are bad
+        redmine_instance_cache[cache_key] = redmine  # Store in cache
         return redmine
     except AuthError:
         raise HTTPException(
