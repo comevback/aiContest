@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { analyzeProject } from '../utils/api';
+import { analyzeProject, updateWikiPage } from '../utils/api';
 import ReactMarkdown from 'react-markdown';
 import { ClipLoader } from 'react-spinners';
 
@@ -7,14 +7,19 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
   const [analysis, setAnalysis] = useState(null);
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
+  const [isSyncingWiki, setIsSyncingWiki] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(null);
+  const [syncError, setSyncError] = useState(null);
 
   const handleAnalyze = async (project) => {
-    if (selectedProject === project.id && analysis) return; // Prevent re-analysis if same project and analysis exists
+    if (selectedProject === project.id && analysis) return;
 
     setSelectedProject(project.id);
     setLoadingAnalysis(true);
     setAnalysisError(null);
     setAnalysis(null);
+    setSyncSuccess(null);
+    setSyncError(null);
 
     try {
       const result = await analyzeProject(project.identifier || project.id);
@@ -28,6 +33,37 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
     }
     setLoadingAnalysis(false);
   };
+
+  const handleSyncToWiki = async () => {
+    if (!analysis || !selectedProject) return;
+
+    setIsSyncingWiki(true);
+    setSyncSuccess(null);
+    setSyncError(null);
+
+    try {
+      const project = projects.find(p => p.id === selectedProject);
+      if (!project) {
+        throw new Error("Selected project not found.");
+      }
+
+      const result = await updateWikiPage(
+        project.identifier,
+        "AI_Analysis_Report", // Wiki page title
+        analysis
+      );
+
+      if (result.error) {
+        setSyncError(result.error);
+      } else {
+        setSyncSuccess(`Wikiページが正常に更新されました。URL: ${result.details.browser_url}`);
+      }
+    } catch (err) {
+      setSyncError(err.message || 'Wikiの同期に失敗しました。');
+    }
+    setIsSyncingWiki(false);
+  };
+
 
   if (loadingProjects) {
     return (
@@ -102,6 +138,13 @@ const IssueAnalysis = ({ projects, selectedProject, setSelectedProject, loadingP
           <h2>分析結果</h2>
           <div className="analysis-result-content">
             <ReactMarkdown>{analysis}</ReactMarkdown>
+          </div>
+          <div className="sync-section" style={{ marginTop: '20px' }}>
+            <button onClick={handleSyncToWiki} disabled={isSyncingWiki} className="sync-button">
+              {isSyncingWiki ? '同期中...' : 'Wikiに同期'}
+            </button>
+            {syncSuccess && <div className="success-message" style={{ marginTop: '10px', color: 'green' }}>{syncSuccess}</div>}
+            {syncError && <div className="error-message" style={{ marginTop: '10px', color: 'red' }}>{syncError}</div>}
           </div>
         </div>
       )}

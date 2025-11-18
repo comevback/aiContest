@@ -63,6 +63,23 @@ export const analyzeProject = async (projectIdentifier) => {
   }
 };
 
+export const updateWikiPage = async (projectIdentifier, title, content) => {
+  try {
+    const response = await apiClient.post(`/api/projects/${projectIdentifier}/wiki`, {
+      title,
+      content,
+      comment: 'Updated by AI analysis tool',
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error updating wiki page:', error);
+    if (error.response && error.response.data && error.response.data.detail) {
+      return { error: error.response.data.detail };
+    }
+    return { error: error.message || 'Failed to update wiki page' };
+  }
+};
+
 export const exportData = async (projectId, format) => {
   try {
     const response = await apiClient.get(`/api/projects/${projectId}/export/${format}`, {

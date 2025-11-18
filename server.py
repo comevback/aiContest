@@ -12,6 +12,8 @@ import csv
 import io
 from datetime import datetime, timedelta, date
 import json
+import requests
+from urllib.parse import quote
 
 # Load environment variables from .env file
 load_dotenv()
@@ -53,6 +55,12 @@ app.add_middleware(
 
 class ProjectAnalysisRequest(BaseModel):
     project_id: str
+
+
+class WikiPageUpdateRequest(BaseModel):
+    title: str
+    content: str
+    comment: str = ""
 
 
 def strip_markdown_fence(text: str) -> str:
@@ -303,7 +311,9 @@ async def analyze_project(
 
         issues_text = ""
         for issue in project_issues:
-            issues_text += f"- ID: {issue.id}, Subject: {issue.subject}, Status: {issue.status.name}, Priority: {issue.priority.name}\n"
+            # Safely get description and clean it up for the prompt
+            description = getattr(issue, 'description', '説明なし').replace('\n', ' ').replace('\r', '')
+            issues_text += f"- ID: {issue.id}, Subject: {issue.subject}, Status: {issue.status.name}, Priority: {issue.priority.name}, Description: {description}\n"
 
         print(
             f"Sending {len(project_issues)} issues to Azure OpenAI for analysis...")
@@ -322,6 +332,87 @@ async def analyze_project(
     except Exception as e:
         print(f"ERROR: AI analysis failed for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
+
+
+def upsert_wiki_page(base_url: str, project_identifier: str, title: str, text: str, api_key: str, comment: str = ""):
+    """
+    Creates or updates a wiki page in Redmine.
+    """
+    url = f"{base_url}/projects/{project_identifier}/wiki/{quote(title)}.json"
+    headers = {
+        "X-Redmine-API-Key": api_key,
+        "Content-Type": "application/json; charset=utf-8",
+        "Accept": "application/json",
+    }
+    payload = {"wiki_page": {"text": text, "comments": comment}}
+
+    try:
+        # Use PUT to create or update the wiki page
+        r = requests.put(url, data=json.dumps(
+            payload, ensure_ascii=False).encode("utf-8"), headers=headers)
+        r.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+
+        # After successful update, get the page details to confirm
+        g = requests.get(url, headers=headers)
+        g.raise_for_status()
+
+        if g.headers.get("Content-Type", "").startswith("application/json"):
+            page = g.json().get("wiki_page", {})
+            return {
+                "ok": True,
+                "title": page.get("title", title),
+                "version": page.get("version"),
+                "browser_url": f"{base_url}/projects/{project_identifier}/wiki/{quote(title)}"
+            }
+        else:
+            # This case should ideally not be reached if the PUT was successful
+            return {"ok": False, "status": g.status_code, "body": g.text}
+
+    except requests.exceptions.RequestException as e:
+        print(f"ERROR: Failed to upsert wiki page '{title}' for project '{project_identifier}': {e}")
+        # Try to provide a more specific error message based on the response
+        if e.response is not None:
+            status_code = e.response.status_code
+            if status_code == 404:
+                 raise HTTPException(status_code=404, detail=f"Project '{project_identifier}' or wiki page not found. Ensure the project identifier is correct.")
+            elif status_code == 401:
+                 raise HTTPException(status_code=401, detail="Redmine authentication failed. Check your API key.")
+            elif status_code == 403:
+                 raise HTTPException(status_code=403, detail="You do not have permission to edit the wiki on this project.")
+            else:
+                 raise HTTPException(status_code=status_code, detail=f"Redmine API error: {e.response.text}")
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to connect to Redmine: {e}")
+
+
+@app.post("/api/projects/{project_identifier}/wiki")
+async def update_wiki(
+    project_identifier: str,
+    request_body: WikiPageUpdateRequest,
+    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
+    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
+):
+    """Updates a Redmine wiki page with the given content."""
+    try:
+        result = upsert_wiki_page(
+            base_url=x_redmine_url,
+            project_identifier=project_identifier,
+            title=request_body.title,
+            text=request_body.content,
+            api_key=x_redmine_api_key,
+            comment=request_body.comment
+        )
+        if result.get("ok"):
+            return {"message": "Wiki page updated successfully.", "details": result}
+        else:
+            # This part might be redundant if upsert_wiki_page raises HTTPException
+            raise HTTPException(status_code=result.get("status", 500), detail=result.get("body", "Failed to update wiki page."))
+    except HTTPException as e:
+        # Re-raise HTTPException to let FastAPI handle it
+        raise e
+    except Exception as e:
+        print(f"ERROR: An unexpected error occurred while updating wiki: {e}")
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
 
 
 @app.get("/api/projects/{project_id}/progress-prediction")
