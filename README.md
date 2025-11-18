@@ -5,6 +5,7 @@
 ユーザーは Redmine にログインし、「個人設定」から REST API を有効化する。  
 自分の API キーと Redmine URL を取得する。  
 以降のすべての処理はこの二つの情報に依存する。
+bundle exec rails s -e production -b 0.0.0.0 -p 3000
 
 ### 2. フロントエンド（React）の起動
 
