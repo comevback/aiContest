@@ -502,3 +502,42 @@ body {
   word-break: break-word;
 }
 
+.sync-button {
+  padding: 12px 25px;
+  background-color: #007bff; /* A vibrant blue */
+  color: white;
+  border: none;
+  border-radius: 8px; /* Slightly more rounded corners */
+  cursor: pointer;
+  font-size: 16px; /* Larger font size */
+  font-weight: 600; /* Bolder text */
+  transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth transitions */
+  box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3); /* Subtle shadow */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.sync-button:hover:not(:disabled) {
+  background-color: #0056b3; /* Darker blue on hover */
+  transform: translateY(-2px); /* Slight lift effect */
+}
+
+.sync-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.success-message {
+  color: #28a745; /* Green for success */
+  font-weight: 500;
+}
+
+.error-message {
+  color: #dc3545; /* Red for error */
+  font-weight: 500;
+}
+
