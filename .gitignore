@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+data
+faiss_index
+
 # C extensions
 *.so
 
