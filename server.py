@@ -274,6 +274,65 @@ def get_redmine_instance(redmine_url: str, redmine_api_key: str):
 # --- API Endpoints ---
 
 # RAG Endpoints
+@app.get("/api/rag/documents")
+async def get_rag_documents():
+    """Returns a list of documents in the RAG data directory."""
+    if not os.path.isdir(DATA_DIR):
+        return {"documents": []}
+    try:
+        # Filter out directories, return only files
+        documents = [f for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
+        return {"documents": documents}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list documents: {e}")
+
+@app.delete("/api/rag/documents/{filename}")
+async def delete_rag_document(filename: str):
+    """Deletes a document and triggers a full re-indexing of the knowledge base."""
+    try:
+        # Sanitize filename to prevent directory traversal
+        if ".." in filename or "/" in filename or "\\" in filename:
+            raise HTTPException(status_code=400, detail="Invalid filename.")
+        
+        file_path = os.path.join(DATA_DIR, filename)
+        if not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail="File not found.")
+
+        # 1. Delete the actual document file
+        os.remove(file_path)
+
+        # 2. Delete the FAISS index to force a rebuild
+        index_file = os.path.join(INDEX_DIR, "index.faiss")
+        pkl_file = os.path.join(INDEX_DIR, "index.pkl")
+        if os.path.exists(index_file):
+            os.remove(index_file)
+        if os.path.exists(pkl_file):
+            os.remove(pkl_file)
+        
+        # 3. Get remaining files and trigger re-indexing
+        remaining_files = [os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
+        
+        task_id = str(uuid.uuid4())
+        message = "File deleted. Starting full re-index..."
+        if not remaining_files:
+            message = "File deleted. Knowledge base is now empty."
+            # No need to run indexing if no files are left
+            indexing_tasks[task_id] = {"status": "completed", "progress": 100, "total": 100, "message": message}
+            # Also reload the service to clear the in-memory index
+            rag_service.reload()
+        else:
+            indexing_tasks[task_id] = {"status": "pending", "progress": 0, "total": 100, "message": "Task queued for re-indexing"}
+            thread = threading.Thread(target=run_indexing, args=(task_id, remaining_files))
+            thread.start()
+
+        return {"task_id": task_id, "message": message}
+
+    except HTTPException as e:
+        raise e # Re-raise HTTPException
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
+
+
 @app.post("/api/rag/upload")
 async def upload_rag_documents(files: List[UploadFile] = File(...)):
     task_id = str(uuid.uuid4())

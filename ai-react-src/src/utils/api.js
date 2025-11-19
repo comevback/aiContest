@@ -33,6 +33,26 @@ apiClient.interceptors.request.use(
 
 // --- RAG Functions ---
 
+export const getDocuments = async () => {
+  try {
+    const response = await apiClient.get('/api/rag/documents');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to fetch documents' };
+  }
+};
+
+export const deleteDocument = async (filename) => {
+  try {
+    const response = await apiClient.delete(`/api/rag/documents/${filename}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error deleting document ${filename}:`, error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to delete document' };
+  }
+};
+
 export const uploadRAGFiles = async (files) => {
   const formData = new FormData();
   files.forEach(file => {

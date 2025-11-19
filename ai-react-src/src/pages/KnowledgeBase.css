@@ -1,7 +1,60 @@
 .knowledge-base-page {
+  display: flex;
+  gap: 20px;
   padding: 20px;
-  max-width: 900px;
-  margin: 0 auto;
+  height: calc(100vh - 60px); /* Adjust based on navbar height */
+}
+
+.kb-sidebar {
+  flex: 0 0 300px; /* Do not grow, do not shrink, base width 300px */
+  background-color: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  overflow-y: auto;
+}
+
+.kb-sidebar h3 {
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+}
+
+.document-list {
+  list-style-type: none;
+  padding: 0;
+  margin-top: 15px;
+}
+
+.document-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  border-radius: 5px;
+  background-color: #fff;
+  margin-bottom: 8px;
+  font-size: 14px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.document-list-item button {
+  background-color: transparent;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.document-list-item button:hover {
+  color: #a71d2a;
+}
+
+
+.kb-main-content {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
 .kb-container h2 {
@@ -15,7 +68,6 @@
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   padding: 20px;
-  margin-bottom: 20px;
 }
 
 .upload-section .file-input-container {
@@ -47,16 +99,8 @@
   background-color: #0056b3;
 }
 
-.file-list {
-    list-style-type: disc;
-    padding-left: 20px;
-    margin-top: 10px;
-    font-size: 14px;
-    color: #555;
-}
-
 .progress-section {
-    margin-top: 20px;
+    margin-top: 0;
 }
 
 .progress-bar-container {
@@ -95,15 +139,19 @@
 }
 
 .chat-section {
-    margin-top: 20px;
+    margin-top: 0;
+    flex-grow: 1; /* Make chat section fill remaining space */
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-window {
   border: 1px solid #ddd;
   border-radius: 8px;
-  height: 500px;
+  height: 100%;
   display: flex;
   flex-direction: column;
+  flex-grow: 1;
 }
 
 .messages-container {
@@ -119,7 +167,7 @@
   padding: 10px 15px;
   border-radius: 18px;
   max-width: 80%;
-  word-wrap: break-word;
+  overflow-wrap: break-word; /* Fix for text overflow */
 }
 
 .chat-message.user {
