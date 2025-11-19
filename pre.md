@@ -1,4 +1,5 @@
 bundle exec rails s -e production -b 0.0.0.0 -p 3000
+uvicorn server:app --reload
 
 **WSL + PostgreSQL + Redmine 6.1（Rails 6.1 / Ruby 3.0–3.2）**
 （√ 标注为首次/偶尔需要；★ 为每天启动常用）
@@ -12,6 +13,9 @@ bundle exec rails s -e production -b 0.0.0.0 -p 3000
 ```bash
 sudo apt update
 sudo apt install -y build-essential libpq-dev postgresql postgresql-contrib git pkg-config
+sudo apt install -y rbenv ruby-build
+rbenv install 3.2.2
+rbenv global 3.2.2
 ```
 
 2. 数据库创建（PostgreSQL）
