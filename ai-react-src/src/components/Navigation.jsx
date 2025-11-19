@@ -3,10 +3,10 @@ import React from 'react';
 const Navigation = ({ currentPage, setCurrentPage, onLogout }) => {
   const navItems = [
     { id: 'dashboard', label: 'ダッシュボード', icon: '', color: '#4a90e2' },
+    { id: 'knowledge-base', label: '知識ベース', icon: '', color: '#eb1212ff' },
     { id: 'issue-analysis', label: '課題分析', icon: '', color: '#50c878' },
     { id: 'progress-prediction', label: '進捗予測', icon: '', color: '#f5a623' },
     { id: 'data-management', label: 'データ管理', icon: '', color: '#9b59b6' },
-    { id: 'knowledge-base', label: '知識ベース', icon: '', color: '#bd10e0' },
   ];
 
   return (
