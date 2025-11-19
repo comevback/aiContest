@@ -51,7 +51,8 @@ app.add_middleware(
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini-xuxiang")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv(
+    "AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini-xuxiang")
 DATA_DIR = "data"
 INDEX_DIR = "faiss_index"
 
@@ -78,8 +79,10 @@ else:
 
 # --- RAG Indexing Logic (Refactored from build_index.py) ---
 
+
 class TqdmProgressWriter:
     """A file-like object to capture tqdm progress."""
+
     def __init__(self, task_id: str):
         self.task_id = task_id
         self.buffer = ""
@@ -90,11 +93,12 @@ class TqdmProgressWriter:
         if match:
             progress = int(match.group(1))
             if self.task_id in indexing_tasks:
-                 indexing_tasks[self.task_id]['progress'] = progress
-            self.buffer = "" # Reset buffer
+                indexing_tasks[self.task_id]['progress'] = progress
+            self.buffer = ""  # Reset buffer
 
     def flush(self):
         pass
+
 
 def run_indexing(task_id: str, file_paths: List[str]):
     """
@@ -106,9 +110,11 @@ def run_indexing(task_id: str, file_paths: List[str]):
     task['message'] = 'Initializing...'
 
     try:
-        embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        
+        embeddings = HuggingFaceEmbeddings(
+            model_name="intfloat/multilingual-e5-base")
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=800, chunk_overlap=100)
+
         task['message'] = 'Loading and splitting documents...'
         all_chunks = []
         processed_files = []
@@ -118,14 +124,15 @@ def run_indexing(task_id: str, file_paths: List[str]):
             file_name = os.path.basename(file_path)
             file_ext = os.path.splitext(file_name)[1].lower()
             loader = None
-            
+
             try:
                 if file_ext == ".pdf":
                     loader = PyPDFLoader(file_path)
                 elif file_ext == ".docx":
                     loader = UnstructuredWordDocumentLoader(file_path)
                 elif file_ext in [".xlsx", ".xls"]:
-                    loader = UnstructuredExcelLoader(file_path, mode="elements")
+                    loader = UnstructuredExcelLoader(
+                        file_path, mode="elements")
                 elif file_ext == ".txt":
                     loader = TextLoader(file_path, encoding="utf-8")
                 elif file_ext == ".md":
@@ -151,14 +158,15 @@ def run_indexing(task_id: str, file_paths: List[str]):
             task['status'] = 'failed'
             task['message'] = f'No content could be extracted. Processed {len(processed_files)}, ignored {len(ignored_files)} files.'
             return
-            
+
         task['total'] = len(all_chunks)
         task['progress'] = 0
         task['message'] = f'Embedding {len(all_chunks)} document chunks...'
 
         vectorstore = None
         if os.path.exists(os.path.join(INDEX_DIR, "index.faiss")):
-            vectorstore = FAISS.load_local(INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
+            vectorstore = FAISS.load_local(
+                INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
 
         batch_size = 32
         for i in range(0, len(all_chunks), batch_size):
@@ -167,15 +175,16 @@ def run_indexing(task_id: str, file_paths: List[str]):
                 vectorstore = FAISS.from_documents(batch, embeddings)
             elif vectorstore is not None:
                 vectorstore.add_documents(batch)
-            
+
             # Update progress
-            progress_percent = min(100, int(((i + len(batch)) / len(all_chunks)) * 100))
+            progress_percent = min(
+                100, int(((i + len(batch)) / len(all_chunks)) * 100))
             task['progress'] = progress_percent
             task['message'] = f'Embedding documents... ({i+len(batch)}/{len(all_chunks)})'
 
         if vectorstore:
             vectorstore.save_local(INDEX_DIR)
-        
+
         task['status'] = 'completed'
         task['progress'] = 100
         task['message'] = f"Success! Indexed {len(all_chunks)} chunks from {len(processed_files)} files. Ignored {len(ignored_files)} files."
@@ -187,18 +196,22 @@ def run_indexing(task_id: str, file_paths: List[str]):
 
 # --- RAG Service and Models ---
 
+
 class RAGService:
     def __init__(self, index_dir=INDEX_DIR):
         self.index_dir = index_dir
         self.vectorstore = None
         self.qa_chain = None
-        self.embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="intfloat/multilingual-e5-base")
         if AZURE_OPENAI_API_KEY:
             self.llm = LangchainAzureChatOpenAI(
-                azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", AZURE_OPENAI_DEPLOYMENT_NAME),
+                azure_deployment=os.getenv(
+                    "AZURE_OPENAI_CHAT_DEPLOYMENT", AZURE_OPENAI_DEPLOYMENT_NAME),
                 azure_endpoint=AZURE_OPENAI_ENDPOINT,
                 api_key=AZURE_OPENAI_API_KEY,
-                openai_api_version=os.getenv("OPENAI_API_VERSION", AZURE_OPENAI_API_VERSION),
+                openai_api_version=os.getenv(
+                    "OPENAI_API_VERSION", AZURE_OPENAI_API_VERSION),
                 temperature=0.2,
             )
         else:
@@ -207,23 +220,25 @@ class RAGService:
 
     def reload(self) -> bool:
         if not self.llm:
-            print("WARNING: RAG service cannot be loaded as Azure OpenAI client is not initialized.")
+            print(
+                "WARNING: RAG service cannot be loaded as Azure OpenAI client is not initialized.")
             return False
-            
+
         print("Attempting to reload RAG service...")
         if not os.path.exists(os.path.join(self.index_dir, "index.faiss")):
-            print(f"WARNING: RAG index '{self.index_dir}/index.faiss' not found. Cannot load.")
+            print(
+                f"WARNING: RAG index '{self.index_dir}/index.faiss' not found. Cannot load.")
             return False
-            
+
         try:
             self.vectorstore = FAISS.load_local(
                 self.index_dir, self.embeddings, allow_dangerous_deserialization=True
             )
-            retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
+            retriever = self.vectorstore.as_retriever(search_kwargs={"k": 8})
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 retriever=retriever,
-                return_source_documents=True,
+                return_source_documents=False,
             )
             print("✅ RAG service reloaded successfully.")
             return True
@@ -232,48 +247,68 @@ class RAGService:
             self.qa_chain = None
             return False
 
+
 # Instantiate the RAG service on server startup
 rag_service = RAGService()
 
 # Pydantic Models for APIs
+
+
 class ChatRequest(BaseModel):
     question: str
+
+
 class SourceDocument(BaseModel):
     source: Optional[str] = None
     page_content: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     sources: List[SourceDocument]
+
+
 class ProjectAnalysisRequest(BaseModel):
     project_id: str
+
+
 class WikiPageUpdateRequest(BaseModel):
     title: str
     content: str
     comment: str = ""
 
 # --- Helper Functions ---
+
+
 def strip_markdown_fence(text: str) -> str:
-    if not text: return text
+    if not text:
+        return text
     text = text.strip()
     pattern = r"^```(?:markdown|md)?\s*([\s\S]*?)\s*```$"
     match = re.match(pattern, text, re.MULTILINE)
     return match.group(1).strip() if match else re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
 
+
 def get_redmine_instance(redmine_url: str, redmine_api_key: str):
     if not redmine_url or not redmine_api_key:
-        raise HTTPException(status_code=400, detail="Redmine URL and API Key are required.")
+        raise HTTPException(
+            status_code=400, detail="Redmine URL and API Key are required.")
     try:
         redmine = Redmine(redmine_url, key=redmine_api_key)
         redmine.auth()
         return redmine
     except AuthError:
-        raise HTTPException(status_code=401, detail="Failed to authenticate with Redmine.")
+        raise HTTPException(
+            status_code=401, detail="Failed to authenticate with Redmine.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to connect to Redmine: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to connect to Redmine: {e}")
 
 # --- API Endpoints ---
 
 # RAG Endpoints
+
+
 @app.get("/api/rag/documents")
 async def get_rag_documents():
     """Returns a list of documents in the RAG data directory."""
@@ -281,10 +316,13 @@ async def get_rag_documents():
         return {"documents": []}
     try:
         # Filter out directories, return only files
-        documents = [f for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
+        documents = [f for f in os.listdir(
+            DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
         return {"documents": documents}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to list documents: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list documents: {e}")
+
 
 @app.delete("/api/rag/documents/{filename}")
 async def delete_rag_document(filename: str):
@@ -293,7 +331,7 @@ async def delete_rag_document(filename: str):
         # Sanitize filename to prevent directory traversal
         if ".." in filename or "/" in filename or "\\" in filename:
             raise HTTPException(status_code=400, detail="Invalid filename.")
-        
+
         file_path = os.path.join(DATA_DIR, filename)
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found.")
@@ -308,48 +346,55 @@ async def delete_rag_document(filename: str):
             os.remove(index_file)
         if os.path.exists(pkl_file):
             os.remove(pkl_file)
-        
+
         # 3. Get remaining files and trigger re-indexing
-        remaining_files = [os.path.join(DATA_DIR, f) for f in os.listdir(DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
-        
+        remaining_files = [os.path.join(DATA_DIR, f) for f in os.listdir(
+            DATA_DIR) if os.path.isfile(os.path.join(DATA_DIR, f))]
+
         task_id = str(uuid.uuid4())
         message = "File deleted. Starting full re-index..."
         if not remaining_files:
             message = "File deleted. Knowledge base is now empty."
             # No need to run indexing if no files are left
-            indexing_tasks[task_id] = {"status": "completed", "progress": 100, "total": 100, "message": message}
+            indexing_tasks[task_id] = {
+                "status": "completed", "progress": 100, "total": 100, "message": message}
             # Also reload the service to clear the in-memory index
             rag_service.reload()
         else:
-            indexing_tasks[task_id] = {"status": "pending", "progress": 0, "total": 100, "message": "Task queued for re-indexing"}
-            thread = threading.Thread(target=run_indexing, args=(task_id, remaining_files))
+            indexing_tasks[task_id] = {"status": "pending", "progress": 0,
+                                       "total": 100, "message": "Task queued for re-indexing"}
+            thread = threading.Thread(
+                target=run_indexing, args=(task_id, remaining_files))
             thread.start()
 
         return {"task_id": task_id, "message": message}
 
     except HTTPException as e:
-        raise e # Re-raise HTTPException
+        raise e  # Re-raise HTTPException
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete document: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to delete document: {e}")
 
 
 @app.post("/api/rag/upload")
 async def upload_rag_documents(files: List[UploadFile] = File(...)):
     task_id = str(uuid.uuid4())
     file_paths = []
-    
+
     for file in files:
         file_location = os.path.join(DATA_DIR, file.filename)
         with open(file_location, "wb+") as file_object:
             shutil.copyfileobj(file.file, file_object)
         file_paths.append(file_location)
 
-    indexing_tasks[task_id] = {"status": "pending", "progress": 0, "total": 100, "message": "Task queued"}
-    
+    indexing_tasks[task_id] = {
+        "status": "pending", "progress": 0, "total": 100, "message": "Task queued"}
+
     thread = threading.Thread(target=run_indexing, args=(task_id, file_paths))
     thread.start()
-    
+
     return {"task_id": task_id, "message": "File upload successful, indexing started."}
+
 
 @app.get("/api/rag/progress/{task_id}")
 async def get_indexing_progress(task_id: str):
@@ -358,25 +403,31 @@ async def get_indexing_progress(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found.")
     return task
 
+
 @app.post("/api/rag/reload")
 async def reload_rag_endpoint():
     if rag_service.reload():
         return {"message": "RAG service reloaded successfully."}
-    raise HTTPException(status_code=500, detail="Failed to reload RAG service. Check server logs.")
+    raise HTTPException(
+        status_code=500, detail="Failed to reload RAG service. Check server logs.")
+
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_with_rag(request: ChatRequest):
     if not rag_service or not rag_service.qa_chain:
-        raise HTTPException(status_code=503, detail="RAG service is not available.")
+        raise HTTPException(
+            status_code=503, detail="RAG service is not available.")
     try:
         result = rag_service.qa_chain.invoke(request.question)
-        sources = [SourceDocument(source=doc.metadata.get("source"), page_content=doc.page_content) for doc in result.get("source_documents", [])]
-        return ChatResponse(answer=result.get("result", "No answer found."), sources=sources)
+        return ChatResponse(answer=result.get("result", "No answer found."), sources=[])
     except Exception as e:
         print(f"ERROR: RAG chat processing failed: {e}")
-        raise HTTPException(status_code=500, detail=f"An error occurred during chat processing: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"An error occurred during chat processing: {e}")
 
 # Existing Redmine Endpoints
+
+
 @app.get("/api/projects")
 async def get_projects(x_redmine_url: str = Header(..., alias="X-Redmine-Url"), x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")):
     redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
@@ -384,7 +435,9 @@ async def get_projects(x_redmine_url: str = Header(..., alias="X-Redmine-Url"), 
         projects = redmine.project.all(limit=100)
         return {"projects": [{"id": p.id, "name": p.name, "identifier": p.identifier} for p in projects]}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
+
 
 @app.get("/api/projects/{project_id}/issues")
 async def get_issues(
@@ -505,7 +558,8 @@ async def analyze_project(
         issues_text = ""
         for issue in project_issues:
             # Safely get description and clean it up for the prompt
-            description = getattr(issue, 'description', '説明なし').replace('\n', ' ').replace('\r', '')
+            description = getattr(issue, 'description', '説明なし').replace(
+                '\n', ' ').replace('\r', '')
             issues_text += f"- ID: {issue.id}, Subject: {issue.subject}, Status: {issue.status.name}, Priority: {issue.priority.name}, Description: {description}\n"
 
         print(
@@ -590,6 +644,7 @@ def analyze_redmine_issues_with_openai(issues_str: str) -> str:
         print(f"Azure OpenAI API 呼び出しエラー: {e}")
         raise e
 
+
 def upsert_wiki_page(base_url: str, project_identifier: str, title: str, text: str, api_key: str, comment: str = ""):
     """
     Creates or updates a wiki page in Redmine.
@@ -625,20 +680,26 @@ def upsert_wiki_page(base_url: str, project_identifier: str, title: str, text: s
             return {"ok": False, "status": g.status_code, "body": g.text}
 
     except requests.exceptions.RequestException as e:
-        print(f"ERROR: Failed to upsert wiki page '{title}' for project '{project_identifier}': {e}")
+        print(
+            f"ERROR: Failed to upsert wiki page '{title}' for project '{project_identifier}': {e}")
         # Try to provide a more specific error message based on the response
         if e.response is not None:
             status_code = e.response.status_code
             if status_code == 404:
-                 raise HTTPException(status_code=404, detail=f"Project '{project_identifier}' or wiki page not found. Ensure the project identifier is correct.")
+                raise HTTPException(
+                    status_code=404, detail=f"Project '{project_identifier}' or wiki page not found. Ensure the project identifier is correct.")
             elif status_code == 401:
-                 raise HTTPException(status_code=401, detail="Redmine authentication failed. Check your API key.")
+                raise HTTPException(
+                    status_code=401, detail="Redmine authentication failed. Check your API key.")
             elif status_code == 403:
-                 raise HTTPException(status_code=403, detail="You do not have permission to edit the wiki on this project.")
+                raise HTTPException(
+                    status_code=403, detail="You do not have permission to edit the wiki on this project.")
             else:
-                 raise HTTPException(status_code=status_code, detail=f"Redmine API error: {e.response.text}")
+                raise HTTPException(
+                    status_code=status_code, detail=f"Redmine API error: {e.response.text}")
         else:
-            raise HTTPException(status_code=500, detail=f"Failed to connect to Redmine: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to connect to Redmine: {e}")
 
 
 @app.post("/api/projects/{project_identifier}/wiki")
@@ -662,13 +723,15 @@ async def update_wiki(
             return {"message": "Wiki page updated successfully.", "details": result}
         else:
             # This part might be redundant if upsert_wiki_page raises HTTPException
-            raise HTTPException(status_code=result.get("status", 500), detail=result.get("body", "Failed to update wiki page."))
+            raise HTTPException(status_code=result.get(
+                "status", 500), detail=result.get("body", "Failed to update wiki page."))
     except HTTPException as e:
         # Re-raise HTTPException to let FastAPI handle it
         raise e
     except Exception as e:
         print(f"ERROR: An unexpected error occurred while updating wiki: {e}")
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"An unexpected error occurred: {e}")
 
 
 @app.get("/api/projects/{project_id}/progress-prediction")

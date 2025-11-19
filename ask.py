@@ -14,7 +14,7 @@ embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
 # === 加载索引 ===
 vectorstore = FAISS.load_local(
     INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+retriever = vectorstore.as_retriever(search_kwargs={"k": 8})
 
 # === LLM（Azure OpenAI） ===
 llm = AzureChatOpenAI(

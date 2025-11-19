@@ -13,7 +13,7 @@ INDEX_DIR = "faiss_index"
 embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
 
 # 2️⃣ 切分器
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
 
 # 3️⃣ 预扫描所有 PDF，统计总 chunk 数（用于进度条）
 file_list = [f for f in os.listdir(DATA_DIR) if f.lower().endswith(".pdf")]

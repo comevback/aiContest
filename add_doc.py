@@ -8,7 +8,7 @@ DATA_DIR = "data"
 INDEX_DIR = "faiss_index"
 
 embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
 
 # 加载现有索引
 vectorstore = FAISS.load_local(
