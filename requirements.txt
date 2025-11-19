@@ -14,3 +14,9 @@ langchain_huggingface
 dotenv
 faiss-cpu
 pypdf
+unstructured
+python-docx
+pandas
+openpyxl
+lxml
+tqdm

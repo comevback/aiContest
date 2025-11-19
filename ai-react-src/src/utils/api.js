@@ -31,6 +31,61 @@ apiClient.interceptors.request.use(
   }
 );
 
+// --- RAG Functions ---
+
+export const uploadRAGFiles = async (files) => {
+  const formData = new FormData();
+  files.forEach(file => {
+    formData.append('files', file);
+  });
+
+  try {
+    // Use a separate axios instance for multipart/form-data
+    const response = await axios.post(`${API_BASE}/api/rag/upload`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error uploading RAG files:', error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to upload files' };
+  }
+};
+
+export const getIndexingProgress = async (taskId) => {
+  try {
+    const response = await apiClient.get(`/api/rag/progress/${taskId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching indexing progress for task ${taskId}:`, error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to fetch progress' };
+  }
+};
+
+export const reloadRAG = async () => {
+  try {
+    const response = await apiClient.post('/api/rag/reload');
+    return response.data;
+  } catch (error) {
+    console.error('Error reloading RAG service:', error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to reload RAG service' };
+  }
+};
+
+export const askRAG = async (question) => {
+  try {
+    const response = await apiClient.post('/api/chat', { question });
+    return response.data;
+  } catch (error) {
+    console.error('Error in RAG chat:', error);
+    return { error: error.response?.data?.detail || error.message || 'Failed to get answer from RAG chat' };
+  }
+};
+
+
+// --- Existing Redmine Functions ---
+
 export const getProjects = async () => {
   try {
     const response = await apiClient.get('/api/projects');

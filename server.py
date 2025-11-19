@@ -1,8 +1,11 @@
-from fastapi import FastAPI, HTTPException, Response, Header
+from fastapi import FastAPI, HTTPException, Response, Header, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import time
 import os
+import shutil
+import uuid
+import threading
 from dotenv import load_dotenv
 from redminelib import Redmine
 from redminelib.exceptions import AuthError, ResourceNotFoundError
@@ -14,19 +17,51 @@ from datetime import datetime, timedelta, date
 import json
 import requests
 from urllib.parse import quote
+from typing import List, Optional, Dict
+
+# --- RAG Imports ---
+from langchain_openai import AzureChatOpenAI as LangchainAzureChatOpenAI
+from langchain.chains import RetrievalQA
+from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.document_loaders import (
+    PyPDFLoader,
+    TextLoader,
+    UnstructuredWordDocumentLoader,
+    UnstructuredExcelLoader,
+    UnstructuredMarkdownLoader,
+)
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
 
-# REDMINE_URL and REDMINE_API_KEY are now expected to be passed via headers
+# --- App and Middleware Setup ---
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*", "X-Redmine-Url", "X-Redmine-Api-Key"],
+)
 
-# Initialize Azure OpenAI client if credentials are provided
+# --- Global State & Config ---
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv(
-    "AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini-xuxiang")
+AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini-xuxiang")
+DATA_DIR = "data"
+INDEX_DIR = "faiss_index"
 
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(INDEX_DIR, exist_ok=True)
+
+# In-memory storage for indexing task progress
+indexing_tasks: Dict[str, Dict] = {}
+
+# --- Azure OpenAI Client Initialization ---
 azure_openai_client = None
 if AZURE_OPENAI_API_KEY:
     try:
@@ -41,157 +76,256 @@ if AZURE_OPENAI_API_KEY:
 else:
     print("WARNING: Azure OpenAI API key not provided. AI analysis will be disabled.")
 
-app = FastAPI()
+# --- RAG Indexing Logic (Refactored from build_index.py) ---
 
-# Enable CORS for all origins
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*", "X-Redmine-Url", "X-Redmine-Api-Key"],
-)
+class TqdmProgressWriter:
+    """A file-like object to capture tqdm progress."""
+    def __init__(self, task_id: str):
+        self.task_id = task_id
+        self.buffer = ""
 
+    def write(self, s: str):
+        self.buffer += s
+        match = re.search(r"(\d+)%", self.buffer)
+        if match:
+            progress = int(match.group(1))
+            if self.task_id in indexing_tasks:
+                 indexing_tasks[self.task_id]['progress'] = progress
+            self.buffer = "" # Reset buffer
 
+    def flush(self):
+        pass
+
+def run_indexing(task_id: str, file_paths: List[str]):
+    """
+    Runs the document indexing process for multiple file types in a background thread.
+    Updates the global `indexing_tasks` dictionary with progress.
+    """
+    task = indexing_tasks[task_id]
+    task['status'] = 'processing'
+    task['message'] = 'Initializing...'
+
+    try:
+        embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        
+        task['message'] = 'Loading and splitting documents...'
+        all_chunks = []
+        processed_files = []
+        ignored_files = []
+
+        for file_path in file_paths:
+            file_name = os.path.basename(file_path)
+            file_ext = os.path.splitext(file_name)[1].lower()
+            loader = None
+            
+            try:
+                if file_ext == ".pdf":
+                    loader = PyPDFLoader(file_path)
+                elif file_ext == ".docx":
+                    loader = UnstructuredWordDocumentLoader(file_path)
+                elif file_ext in [".xlsx", ".xls"]:
+                    loader = UnstructuredExcelLoader(file_path, mode="elements")
+                elif file_ext == ".txt":
+                    loader = TextLoader(file_path, encoding="utf-8")
+                elif file_ext == ".md":
+                    loader = UnstructuredMarkdownLoader(file_path)
+                else:
+                    ignored_files.append(file_name)
+                    print(f"Ignoring unsupported file type: {file_name}")
+                    continue
+
+                print(f"Processing file: {file_name}")
+                docs = loader.load()
+                chunks = splitter.split_documents(docs)
+                for chunk in chunks:
+                    chunk.metadata['source'] = file_name
+                all_chunks.extend(chunks)
+                processed_files.append(file_name)
+
+            except Exception as e:
+                ignored_files.append(file_name)
+                print(f"ERROR: Failed to process file {file_name}: {e}")
+
+        if not all_chunks:
+            task['status'] = 'failed'
+            task['message'] = f'No content could be extracted. Processed {len(processed_files)}, ignored {len(ignored_files)} files.'
+            return
+            
+        task['total'] = len(all_chunks)
+        task['progress'] = 0
+        task['message'] = f'Embedding {len(all_chunks)} document chunks...'
+
+        vectorstore = None
+        if os.path.exists(os.path.join(INDEX_DIR, "index.faiss")):
+            vectorstore = FAISS.load_local(INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
+
+        batch_size = 32
+        for i in range(0, len(all_chunks), batch_size):
+            batch = all_chunks[i:i+batch_size]
+            if vectorstore is None and i == 0:
+                vectorstore = FAISS.from_documents(batch, embeddings)
+            elif vectorstore is not None:
+                vectorstore.add_documents(batch)
+            
+            # Update progress
+            progress_percent = min(100, int(((i + len(batch)) / len(all_chunks)) * 100))
+            task['progress'] = progress_percent
+            task['message'] = f'Embedding documents... ({i+len(batch)}/{len(all_chunks)})'
+
+        if vectorstore:
+            vectorstore.save_local(INDEX_DIR)
+        
+        task['status'] = 'completed'
+        task['progress'] = 100
+        task['message'] = f"Success! Indexed {len(all_chunks)} chunks from {len(processed_files)} files. Ignored {len(ignored_files)} files."
+
+    except Exception as e:
+        task['status'] = 'failed'
+        task['message'] = f"An unexpected error occurred during indexing: {str(e)}"
+        print(f"[Indexing Task {task_id}] Failed: {e}")
+
+# --- RAG Service and Models ---
+
+class RAGService:
+    def __init__(self, index_dir=INDEX_DIR):
+        self.index_dir = index_dir
+        self.vectorstore = None
+        self.qa_chain = None
+        self.embeddings = HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-base")
+        if AZURE_OPENAI_API_KEY:
+            self.llm = LangchainAzureChatOpenAI(
+                azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT", AZURE_OPENAI_DEPLOYMENT_NAME),
+                azure_endpoint=AZURE_OPENAI_ENDPOINT,
+                api_key=AZURE_OPENAI_API_KEY,
+                openai_api_version=os.getenv("OPENAI_API_VERSION", AZURE_OPENAI_API_VERSION),
+                temperature=0.2,
+            )
+        else:
+            self.llm = None
+        self.reload()
+
+    def reload(self) -> bool:
+        if not self.llm:
+            print("WARNING: RAG service cannot be loaded as Azure OpenAI client is not initialized.")
+            return False
+            
+        print("Attempting to reload RAG service...")
+        if not os.path.exists(os.path.join(self.index_dir, "index.faiss")):
+            print(f"WARNING: RAG index '{self.index_dir}/index.faiss' not found. Cannot load.")
+            return False
+            
+        try:
+            self.vectorstore = FAISS.load_local(
+                self.index_dir, self.embeddings, allow_dangerous_deserialization=True
+            )
+            retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
+            self.qa_chain = RetrievalQA.from_chain_type(
+                llm=self.llm,
+                retriever=retriever,
+                return_source_documents=True,
+            )
+            print("✅ RAG service reloaded successfully.")
+            return True
+        except Exception as e:
+            print(f"ERROR: Failed to reload RAG service: {e}")
+            self.qa_chain = None
+            return False
+
+# Instantiate the RAG service on server startup
+rag_service = RAGService()
+
+# Pydantic Models for APIs
+class ChatRequest(BaseModel):
+    question: str
+class SourceDocument(BaseModel):
+    source: Optional[str] = None
+    page_content: str
+class ChatResponse(BaseModel):
+    answer: str
+    sources: List[SourceDocument]
 class ProjectAnalysisRequest(BaseModel):
     project_id: str
-
-
 class WikiPageUpdateRequest(BaseModel):
     title: str
     content: str
     comment: str = ""
 
-
+# --- Helper Functions ---
 def strip_markdown_fence(text: str) -> str:
-    """
-    ```markdown ... ``` または ``` ... ``` で囲まれたフェンスを削除します。
-    """
-    if not text:
-        return text
+    if not text: return text
     text = text.strip()
-
     pattern = r"^```(?:markdown|md)?\s*([\s\S]*?)\s*```$"
     match = re.match(pattern, text, re.MULTILINE)
-    if match:
-        return match.group(1).strip()
-
-    return re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
-
-
-def analyze_redmine_issues_with_openai(issues_str: str) -> str:
-    prompt = (
-        "あなたは経験豊富なプロジェクトマネジメントコンサルタントです。"
-        "以下の Redmine チケット一覧に基づき、構造的で実行可能な分析提案を日本語で出力してください。\n\n"
-        "次の形式に厳密に従ってください：\n"
-        "## プロジェクトに関する提案：...\n"
-        "## スケジュール管理に関する提案：...\n"
-        "## 人員配置に関する提案：...\n\n"
-        "【出力に関する指示】\n"
-        "- 「プロジェクトに関する提案」では、全体の進捗、リスク、優先度の観点から改善点を述べてください。\n"
-        "- 「スケジュール管理に関する提案」では、締切、遅延、リソース配分の妥当性を分析してください。\n"
-        "- 「人員配置に関する提案」では、担当者の負荷や役割分担を考慮した改善案を示してください。\n"
-        "\n以下は Redmine チケットの一覧です：\n\n"
-        + issues_str
-    )
-
-    example = (
-        '''
-        ### 例：AI プロジェクトの分析レポート
-
-        ## プロジェクトに関する提案：
-        現在、複数のチケットが「新規」状態であり、優先度の高いタスク（例：「緊急バグ修正1」）が未対応です。
-        これらの重要タスクを最優先で対応し、定期的に進捗をレビューする体制を整えることを推奨します。
-        プロジェクト全体の進捗とリスクを定量的に把握し、優先順位を動的に見直すことで効率を高めることができます。
-
-        ## スケジュール管理に関する提案：
-        「緊急バグ修正1」の期限は2025年10月21日と迫っているため、即時対応が必要です。
-        一方、「新機能開発1」は10月24日締めで、優先度も高いため、バグ修正後すぐに着手できるようリソースを確保するべきです。
-        期限が設定されていない「サポート」チケットには、明確なスケジュールを設けることで遅延を防げます。
-
-        ## 人員配置に関する提案：
-        すべてのチケットが同一担当者（Redmine Admin）に割り当てられているため、負荷の偏りが見られます。
-        メンバーのスキルとタスクの難易度を考慮し、適切に分担を行うことでチーム全体の生産性を向上できます。
-        特に優先度の高いタスクは複数の担当者で並行処理できるよう体制を見直してください。
-        '''
-    )
-
-    if not azure_openai_client:
-        raise ValueError("Azure OpenAI クライアントが初期化されていません。")
-
-    try:
-        resp = azure_openai_client.chat.completions.create(
-            model=AZURE_OPENAI_DEPLOYMENT_NAME,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "あなたはプロジェクトマネジメントの専門家です。"
-                        "必ず Markdown 形式で出力し、必要に応じて ``` コードブロックを使用してください。"
-                        "出力形式は次の例に従ってください：" + example
-                    ),
-                },
-                {"role": "user", "content": prompt},
-            ],
-        )
-        open_ai_response = resp.choices[0].message.content
-        openai_clean = strip_markdown_fence(open_ai_response)
-        print("Raw OpenAI Response:\n" + open_ai_response)
-        return openai_clean
-    except Exception as e:
-        print(f"Azure OpenAI API 呼び出しエラー: {e}")
-        raise e
-
-
-redmine_instance_cache = {}
-
-# Helper function to get Redmine instance
-
+    return match.group(1).strip() if match else re.sub(r"^```(?:markdown|md)?|```$", "", text, flags=re.MULTILINE).strip()
 
 def get_redmine_instance(redmine_url: str, redmine_api_key: str):
     if not redmine_url or not redmine_api_key:
-        raise HTTPException(
-            status_code=400, detail="Redmine URL and API Key are required.")
-
-    # Create a unique key for the cache
-    cache_key = f"{redmine_url}-{redmine_api_key}"
-
-    if cache_key in redmine_instance_cache:
-        return redmine_instance_cache[cache_key]
-
+        raise HTTPException(status_code=400, detail="Redmine URL and API Key are required.")
     try:
         redmine = Redmine(redmine_url, key=redmine_api_key)
-        # Test connection to ensure credentials are valid
-        redmine.auth()  # This will raise AuthError if credentials are bad
-        redmine_instance_cache[cache_key] = redmine  # Store in cache
+        redmine.auth()
         return redmine
     except AuthError:
-        raise HTTPException(
-            status_code=401, detail="Failed to authenticate with Redmine. Check your API key.")
+        raise HTTPException(status_code=401, detail="Failed to authenticate with Redmine.")
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to connect to Redmine: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to connect to Redmine: {e}")
 
+# --- API Endpoints ---
 
+# RAG Endpoints
+@app.post("/api/rag/upload")
+async def upload_rag_documents(files: List[UploadFile] = File(...)):
+    task_id = str(uuid.uuid4())
+    file_paths = []
+    
+    for file in files:
+        file_location = os.path.join(DATA_DIR, file.filename)
+        with open(file_location, "wb+") as file_object:
+            shutil.copyfileobj(file.file, file_object)
+        file_paths.append(file_location)
+
+    indexing_tasks[task_id] = {"status": "pending", "progress": 0, "total": 100, "message": "Task queued"}
+    
+    thread = threading.Thread(target=run_indexing, args=(task_id, file_paths))
+    thread.start()
+    
+    return {"task_id": task_id, "message": "File upload successful, indexing started."}
+
+@app.get("/api/rag/progress/{task_id}")
+async def get_indexing_progress(task_id: str):
+    task = indexing_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return task
+
+@app.post("/api/rag/reload")
+async def reload_rag_endpoint():
+    if rag_service.reload():
+        return {"message": "RAG service reloaded successfully."}
+    raise HTTPException(status_code=500, detail="Failed to reload RAG service. Check server logs.")
+
+@app.post("/api/chat", response_model=ChatResponse)
+async def chat_with_rag(request: ChatRequest):
+    if not rag_service or not rag_service.qa_chain:
+        raise HTTPException(status_code=503, detail="RAG service is not available.")
+    try:
+        result = rag_service.qa_chain.invoke(request.question)
+        sources = [SourceDocument(source=doc.metadata.get("source"), page_content=doc.page_content) for doc in result.get("source_documents", [])]
+        return ChatResponse(answer=result.get("result", "No answer found."), sources=sources)
+    except Exception as e:
+        print(f"ERROR: RAG chat processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred during chat processing: {e}")
+
+# Existing Redmine Endpoints
 @app.get("/api/projects")
-async def get_projects(
-    x_redmine_url: str = Header(..., alias="X-Redmine-Url"),
-    x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")
-):
-    """Returns a list of projects from Redmine."""
+async def get_projects(x_redmine_url: str = Header(..., alias="X-Redmine-Url"), x_redmine_api_key: str = Header(..., alias="X-Redmine-Api-Key")):
     redmine = get_redmine_instance(x_redmine_url, x_redmine_api_key)
     try:
         projects = redmine.project.all(limit=100)
-        project_list = []
-        for project in projects:
-            project_list.append(
-                {"id": project.id, "name": project.name, "identifier": project.identifier})
-        return {"projects": project_list}
+        return {"projects": [{"id": p.id, "name": p.name, "identifier": p.identifier} for p in projects]}
     except Exception as e:
-        print(f"ERROR: Failed to fetch projects from Redmine: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
-
+        raise HTTPException(status_code=500, detail=f"Failed to fetch projects from Redmine: {e}")
 
 @app.get("/api/projects/{project_id}/issues")
 async def get_issues(
@@ -333,6 +467,69 @@ async def analyze_project(
         print(f"ERROR: AI analysis failed for project {project_id}: {e}")
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
 
+
+def analyze_redmine_issues_with_openai(issues_str: str) -> str:
+    prompt = (
+        "あなたは経験豊富なプロジェクトマネジメントコンサルタントです。"
+        "以下の Redmine チケット一覧に基づき、構造的で実行可能な分析提案を日本語で出力してください。\n\n"
+        "次の形式に厳密に従ってください：\n"
+        "## プロジェクトに関する提案：...\n"
+        "## スケジュール管理に関する提案：...\n"
+        "## 人員配置に関する提案：...\n\n"
+        "【出力に関する指示】\n"
+        "- 「プロジェクトに関する提案」では、全体の進捗、リスク、優先度の観点から改善点を述べてください。\n"
+        "- 「スケジュール管理に関する提案」では、締切、遅延、リソース配分の妥当性を分析してください。\n"
+        "- 「人員配置に関する提案」では、担当者の負荷や役割分担を考慮した改善案を示してください。\n"
+        "\n以下は Redmine チケットの一覧です：\n\n"
+        + issues_str
+    )
+
+    example = (
+        '''
+        ### 例：AI プロジェクトの分析レポート
+
+        ## プロジェクトに関する提案：
+        現在、複数のチケットが「新規」状態であり、優先度の高いタスク（例：「緊急バグ修正1」）が未対応です。
+        これらの重要タスクを最優先で対応し、定期的に進捗をレビューする体制を整えることを推奨します。
+        プロジェクト全体の進捗とリスクを定量的に把握し、優先順位を動的に見直すことで効率を高めることができます。
+
+        ## スケジュール管理に関する提案：
+        「緊急バグ修正1」の期限は2025年10月21日と迫っているため、即時対応が必要です。
+        一方、「新機能開発1」は10月24日締めで、優先度も高いため、バグ修正後すぐに着手できるようリソースを確保するべきです。
+        期限が設定されていない「サポート」チケットには、明確なスケジュールを設けることで遅延を防げます。
+
+        ## 人員配置に関する提案：
+        すべてのチケットが同一担当者（Redmine Admin）に割り当てられているため、負荷の偏りが見られます。
+        メンバーのスキルとタスクの難易度を考慮し、適切に分担を行うことでチーム全体の生産性を向上できます。
+        特に優先度の高いタスクは複数の担当者で並行処理できるよう体制を見直してください。
+        '''
+    )
+
+    if not azure_openai_client:
+        raise ValueError("Azure OpenAI クライアントが初期化されていません。")
+
+    try:
+        resp = azure_openai_client.chat.completions.create(
+            model=AZURE_OPENAI_DEPLOYMENT_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "あなたはプロジェクトマネジメントの専門家です。"
+                        "必ず Markdown 形式で出力し、必要に応じて ``` コードブロックを使用してください。"
+                        "出力形式は次の例に従ってください：" + example
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+        )
+        open_ai_response = resp.choices[0].message.content
+        openai_clean = strip_markdown_fence(open_ai_response)
+        print("Raw OpenAI Response:\n" + open_ai_response)
+        return openai_clean
+    except Exception as e:
+        print(f"Azure OpenAI API 呼び出しエラー: {e}")
+        raise e
 
 def upsert_wiki_page(base_url: str, project_identifier: str, title: str, text: str, api_key: str, comment: str = ""):
     """

@@ -5,7 +5,8 @@ import Dashboard from './pages/Dashboard';
 import IssueAnalysis from './pages/IssueAnalysis';
 import ProgressPrediction from './pages/ProgressPrediction';
 import DataManagement from './pages/DataManagement';
-import { getProjects, setRedmineCredentials } from './utils/api'; // Will add setRedmineCredentials
+import KnowledgeBase from './pages/KnowledgeBase'; // Import the new page
+import { getProjects, setRedmineCredentials } from './utils/api';
 import { ClipLoader } from 'react-spinners';
 
 function App() {
@@ -91,6 +92,8 @@ function App() {
         return <ProgressPrediction {...commonProps} />;
       case 'data-management':
         return <DataManagement {...commonProps} />;
+      case 'knowledge-base': // Add case for the new page
+        return <KnowledgeBase />;
       default:
         return <Dashboard {...commonProps} />;
     }
