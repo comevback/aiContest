@@ -145,6 +145,18 @@
   overflow-wrap: break-word;
   line-height: 1.4;
 }
+
+.chat-message ul,
+.chat-message ol {
+  list-style-position: inside; /* Ensures markers are inside the content box */
+  padding-left: 20px; /* Add some padding for the markers */
+  margin-top: 10px; /* Add some space above the list */
+  margin-bottom: 10px; /* Add some space below the list */
+}
+
+.chat-message li {
+  margin-bottom: 5px; /* Space between list items */
+}
 .chat-message.user {
   background-color: #007bff;
   color: white;
