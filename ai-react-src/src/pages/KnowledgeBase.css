@@ -2,7 +2,8 @@
   display: flex;
   gap: 20px;
   padding: 20px;
-  height: calc(100vh - 60px); /* Adjust based on navbar height */
+  height: calc(100vh - 60px);
+  overflow: hidden; /* Prevent the main page from scrolling */
 }
 
 .kb-sidebar {
@@ -18,8 +19,6 @@
 
 .kb-main-content {
   flex-grow: 1;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
 }
 
@@ -39,7 +38,6 @@
   border: 1px solid #007bff;
   cursor: pointer;
   font-size: 14px;
-  transition: background-color 0.2s, color 0.2s;
 }
 .upload-actions button.select-btn { background-color: #fff; color: #007bff; }
 .upload-actions button.select-btn:hover { background-color: #f0f8ff; }
@@ -87,7 +85,6 @@
 .progress-bar.completed { background-color: #28a745; }
 .progress-bar.failed { background-color: #dc3545; }
 .progress-message { font-size: 13px; font-style: italic; color: #333; text-align: center; }
-.error-message { color: #dc3545; font-weight: bold; }
 
 /* --- Document List in Sidebar --- */
 .doc-list-container {
@@ -116,21 +113,22 @@
 
 /* --- Main Chat Area --- */
 .chat-section {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
     background-color: #f8f9fa; /* Match sidebar color */
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     padding: 20px;
+    height: 100%; /* Fill the main content area */
+    display: flex;
+    flex-direction: column;
 }
 .chat-window {
   border: 1px solid #ddd;
   border-radius: 8px;
-  height: 100%;
+  flex-grow: 1; /* Grow to fill the .chat-section */
   display: flex;
   flex-direction: column;
   background-color: #fff; /* White background for the inner window */
+  min-height: 0; /* Critical for scrolling in flex children */
 }
 .messages-container {
   flex-grow: 1;
