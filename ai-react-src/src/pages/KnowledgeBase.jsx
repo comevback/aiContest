@@ -5,25 +5,27 @@ import { ClipLoader } from 'react-spinners';
 import './KnowledgeBase.css';
 
 const KnowledgeBase = () => {
-  // State for document management
+  // Document Management State
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(true);
 
-  // State for file upload and indexing
+  // Upload & Indexing State
   const [files, setFiles] = useState([]);
-  const [uploading, setUploading] = useState(false);
   const [indexingTask, setIndexingTask] = useState(null);
   const [progress, setProgress] = useState(0);
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState('');
-
-  // State for chat
+  
+  // Chat State
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
+  // Refs
+  const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
 
+  // --- Effects ---
   const fetchDocuments = async () => {
     setLoadingDocs(true);
     const result = await getDocuments();
@@ -35,39 +37,44 @@ const KnowledgeBase = () => {
     setLoadingDocs(false);
   };
 
-  // Fetch documents on initial load
   useEffect(() => {
     fetchDocuments();
   }, []);
 
-  // Polling for indexing progress
   useEffect(() => {
-    if (!indexingTask || indexingTask.status === 'completed' || indexingTask.status === 'failed') {
-      return;
+    if (!indexingTask) return;
+
+    if (indexingTask.status === 'completed') {
+        const timer = setTimeout(() => {
+            setIndexingTask(null);
+            setProgressMessage('');
+        }, 3000); // Hide after 3 seconds on success
+        return () => clearTimeout(timer);
+    }
+    if (indexingTask.status === 'failed') {
+        return; // Persist on failure until dismissed
     }
 
     const interval = setInterval(async () => {
       const result = await getIndexingProgress(indexingTask.id);
       if (result.error) {
-        setError(`進捗の取得に失敗しました: ${result.error}`);
-        setIndexingTask(prev => ({ ...prev, status: 'failed' }));
+        setIndexingTask(prev => ({ ...prev, status: 'failed', message: `進捗の取得に失敗しました: ${result.error}` }));
       } else {
         setProgress(result.progress || 0);
         setProgressMessage(result.message || '');
         if (result.status === 'completed' || result.status === 'failed') {
-          setIndexingTask(prev => ({ ...prev, status: result.status }));
           if (result.status === 'completed') {
             setProgressMessage('インデックス作成完了。ナレッジベースをリロード中...');
             const reloadResult = await reloadRAG();
             if (reloadResult.error) {
-                setError(`ナレッジベースのリロードに失敗しました: ${reloadResult.error}`);
-                setProgressMessage('インデックス作成完了。リロードに失敗しました。');
+                setIndexingTask(prev => ({ ...prev, status: 'failed', message: `リロード失敗: ${reloadResult.error}` }));
             } else {
-                setProgressMessage('ナレッジベースのリロードが完了しました！');
+                setIndexingTask(prev => ({ ...prev, status: 'completed', message: 'ナレッジベースのリロードが完了しました！' }));
             }
-            // Refresh document list after indexing
-            fetchDocuments();
+          } else {
+             setIndexingTask(prev => ({ ...prev, status: 'failed', message: result.message }));
           }
+          fetchDocuments();
         }
       }
     }, 2000);
@@ -75,158 +82,145 @@ const KnowledgeBase = () => {
     return () => clearInterval(interval);
   }, [indexingTask]);
   
-  const scrollToBottom = () => {
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  }, [messages]);
 
-  useEffect(scrollToBottom, [messages]);
-
-  const handleFileChange = (e) => {
-    setFiles([...e.target.files]);
-  };
-
-  const handleUpload = async () => {
-    if (files.length === 0) {
-      setError('アップロードするファイルを選択してください。');
-      return;
+  // --- Event Handlers ---
+  const handleFileSelect = (e) => {
+    e.preventDefault();
+    if (e.target.files?.[0]) {
+      setFiles(Array.from(e.target.files));
     }
-    setUploading(true);
+    e.target.value = null; // Allow re-selecting the same file
+  };
+
+  const onSelectButtonClick = () => {
+    inputRef.current?.click();
+  };
+
+  const handleImport = async () => {
+    if (files.length === 0) return;
     setError('');
-    setProgress(0);
-    setProgressMessage('ファイルをアップロード中...');
+    setIndexingTask({ status: 'processing', progress: 0, message: 'ファイルをアップロード中...' });
     const result = await uploadRAGFiles(files);
-    setUploading(false);
-    setFiles([]); // Clear file input after upload
+    setFiles([]);
     if (result.error) {
-      setError(result.error);
+      setIndexingTask({ status: 'failed', message: result.error });
     } else {
-      setIndexingTask({ id: result.task_id, status: 'pending' });
-      setProgressMessage('アップロード完了。インデックス作成を開始します...');
+      setIndexingTask(prev => ({ ...prev, id: result.task_id, message: 'アップロード完了。インデックス作成を開始します...' }));
     }
   };
   
   const handleDelete = async (filename) => {
     if (window.confirm(`本当にファイル "${filename}" を削除しますか？\nこの操作により、ナレッジベース全体の再インデックスが実行されます。`)) {
       setError('');
-      setProgress(0);
-      setProgressMessage(`ファイル "${filename}" を削除中...`);
+      setIndexingTask({ status: 'processing', progress: 0, message: `ファイル "${filename}" を削除中...` });
       const result = await deleteDocument(filename);
       if (result.error) {
-        setError(result.error);
+        setIndexingTask({ status: 'failed', message: result.error });
       } else {
-        setIndexingTask({ id: result.task_id, status: 'pending' });
-        setProgressMessage('ファイル削除完了。再インデックスを開始します...');
+        setIndexingTask(prev => ({ ...prev, id: result.task_id, message: 'ファイル削除完了。再インデックスを開始します...' }));
       }
     }
   };
 
   const handleSendMessage = async () => {
     if (!chatInput.trim() || chatLoading) return;
-    const newMessages = [...messages, { sender: 'user', text: chatInput }];
-    setMessages(newMessages);
+    const userMessage = { sender: 'user', text: chatInput };
+    setMessages(prev => [...prev, userMessage]);
     const question = chatInput;
     setChatInput('');
     setChatLoading(true);
-
     const result = await askRAG(question);
     setChatLoading(false);
-
     if (result.error) {
-      setMessages([...newMessages, { sender: 'bot', text: `エラー: ${result.error}`, sources: [] }]);
+      setMessages(prev => [...prev, { sender: 'bot', text: `エラー: ${result.error}`, sources: [] }]);
     } else {
-      setMessages([...newMessages, { sender: 'bot', text: result.answer, sources: result.sources }]);
+      setMessages(prev => [...prev, { sender: 'bot', text: result.answer, sources: result.sources }]);
     }
   };
 
   return (
     <div className="knowledge-base-page">
       <aside className="kb-sidebar">
-        <h3>ナレッジベース文書</h3>
-        {loadingDocs ? (
-          <ClipLoader size={25} color={"#007bff"} />
-        ) : (
-          <ul className="document-list">
-            {documents.length === 0 && <p style={{fontSize: '14px', color: '#666'}}>文書がありません。</p>}
-            {documents.map((doc) => (
-              <li key={doc} className="document-list-item">
-                <span>{doc}</span>
-                <button onClick={() => handleDelete(doc)} title={`Delete ${doc}`}>
-                  🗑️
-                </button>
-              </li>
-            ))}
-          </ul>
+        {/* Upload Widget */}
+        <div className="upload-widget">
+          <h4>文書管理</h4>
+          <input ref={inputRef} type="file" multiple onChange={handleFileSelect} style={{display: 'none'}} accept=".pdf,.txt,.md,.docx,.xlsx,.xls"/>
+          <div className="upload-actions">
+            <button onClick={onSelectButtonClick} className="select-btn">
+              ファイルを選択
+            </button>
+            <button onClick={handleImport} className="import-btn" disabled={files.length === 0 || (indexingTask && indexingTask.status === 'processing')}>
+              インポート
+            </button>
+          </div>
+          {files.length > 0 && (
+            <div className="selected-files-list">
+              <strong>選択中のファイル:</strong>
+              <ul>{files.map(f => <li key={f.name}>{f.name}</li>)}</ul>
+            </div>
+          )}
+        </div>
+
+        {/* Progress Section */}
+        {indexingTask && (
+          <div className="progress-section">
+            <div className="progress-bar-container">
+              <div className={`progress-bar ${indexingTask?.status}`} style={{ width: `${progress}%` }}>
+                {progress}%
+              </div>
+            </div>
+            <p className="progress-message">{progressMessage}</p>
+            {indexingTask.status === 'failed' && (
+              <button onClick={() => setIndexingTask(null)} style={{width: '100%', marginTop: '10px', fontSize: '12px', padding: '5px 10px'}}>
+                閉じる
+              </button>
+            )}
+          </div>
         )}
+
+        {/* Document List */}
+        <div className="doc-list-container">
+          <h3>ナレッジベース文書</h3>
+          {loadingDocs ? <ClipLoader size={25} color={"#007bff"} /> : (
+            <ul className="document-list">
+              {documents.length === 0 && <p style={{fontSize: '14px', color: '#666'}}>文書がありません。</p>}
+              {documents.map((doc) => (
+                <li key={doc} className="document-list-item">
+                  <span>{doc}</span>
+                  <button onClick={() => handleDelete(doc)} title={`Delete ${doc}`}>🗑️</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </aside>
 
       <main className="kb-main-content">
-        <div className="card">
-          <h3>1. 文書をアップロード</h3>
-          <p>PDF、TXT、Markdown、Word、Excel ファイルをアップロードして、ナレッジベースを構築・更新します。</p>
-          <div className="file-input-container">
-            <input type="file" multiple onChange={handleFileChange} accept=".pdf,.txt,.md,.docx,.xlsx,.xls" className="file-input" />
-            <button onClick={handleUpload} disabled={uploading || (indexingTask && indexingTask.status === 'processing')}>
-              {uploading ? 'アップロード中...' : 'アップロードとインデックス作成'}
-            </button>
-          </div>
-        </div>
-       
-        {(uploading || indexingTask) && (
-            <div className="progress-section card">
-                <h3>2. インデックス作成状況</h3>
-                <div className="progress-bar-container">
-                    <div 
-                        className={`progress-bar ${indexingTask?.status}`}
-                        style={{ width: `${progress}%` }}
-                    >
-                        {progress}%
-                    </div>
-                </div>
-                <p className="progress-message">{progressMessage}</p>
-                 {error && <p className="error-message">{error}</p>}
-            </div>
-        )}
-
         <div className="chat-section card">
-          <h3>3. ナレッジベースと対話</h3>
+          <h4>ナレッジベースと対話</h4>
           <div className="chat-window">
             <div className="messages-container">
+               {messages.length === 0 && <div style={{textAlign: 'center', color: '#888', margin: 'auto'}}>ドキュメントをインポートして、質問を開始してください。</div>}
               {messages.map((msg, index) => (
                 <div key={index} className={`chat-message ${msg.sender}`}>
                   <ReactMarkdown>{msg.text}</ReactMarkdown>
                   {msg.sender === 'bot' && msg.sources && msg.sources.length > 0 && (
                      <div className="sources-container">
                        <strong>参照元:</strong>
-                       <ul>
-                         {msg.sources.map((source, i) => (
-                           <li key={i} title={source.page_content}>
-                             {source.source}
-                           </li>
-                         ))}
-                       </ul>
+                       <ul>{msg.sources.map((source, i) => <li key={i} title={source.page_content}>{source.source}</li>)}</ul>
                      </div>
                   )}
                 </div>
               ))}
-               {chatLoading && (
-                <div className="chat-message bot">
-                  <ClipLoader size={20} color={"#333"} />
-                </div>
-              )}
+               {chatLoading && <div className="chat-message bot"><ClipLoader size={20} color={"#333"} /></div>}
               <div ref={messagesEndRef} />
             </div>
             <div className="chat-input-container">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                placeholder="文書について質問を入力..."
-                disabled={chatLoading}
-              />
-              <button onClick={handleSendMessage} disabled={chatLoading}>
-                送信
-              </button>
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="文書について質問を入力..." disabled={chatLoading} />
+              <button onClick={handleSendMessage} disabled={chatLoading}>送信</button>
             </div>
           </div>
         </div>
