@@ -6,3 +6,11 @@ python-dotenv
 pydantic
 python-redmine
 openai
+langchain
+langchain-community
+langchain-openai
+sentence-transformers
+langchain_huggingface
+dotenv
+faiss-cpu
+pypdf
