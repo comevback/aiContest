@@ -3,6 +3,7 @@ import { uploadRAGFiles, getIndexingProgress, reloadRAG, askRAG, getDocuments, d
 import ReactMarkdown from 'react-markdown';
 import { ClipLoader } from 'react-spinners';
 import './KnowledgeBase.css';
+import { useChat } from '../context/ChatContext.jsx'; // Import useChat
 
 const KnowledgeBase = () => {
   // Document Management State
@@ -16,8 +17,8 @@ const KnowledgeBase = () => {
   const [progressMessage, setProgressMessage] = useState('');
   const [error, setError] = useState('');
   
-  // Chat State
-  const [messages, setMessages] = useState([]);
+  // Chat State - now using global context
+  const { messages, addMessage } = useChat();
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -128,16 +129,16 @@ const KnowledgeBase = () => {
   const handleSendMessage = async () => {
     if (!chatInput.trim() || chatLoading) return;
     const userMessage = { sender: 'user', text: chatInput };
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(userMessage); // Use addMessage from context
     const question = chatInput;
     setChatInput('');
     setChatLoading(true);
     const result = await askRAG(question);
     setChatLoading(false);
     if (result.error) {
-      setMessages(prev => [...prev, { sender: 'bot', text: `エラー: ${result.error}`, sources: [] }]);
+      addMessage({ sender: 'bot', text: `エラー: ${result.error}`, sources: [] }); // Use addMessage from context
     } else {
-      setMessages(prev => [...prev, { sender: 'bot', text: result.answer, sources: result.sources }]);
+      addMessage({ sender: 'bot', text: result.answer, sources: result.sources }); // Use addMessage from context
     }
   };
 

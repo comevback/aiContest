@@ -44,4 +44,4 @@ app.include_router(redmine_routes.router, prefix="/api")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the SPA!"}
+    return {"message": "Welcome to the SPA system!"}
