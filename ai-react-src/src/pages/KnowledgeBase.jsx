@@ -18,7 +18,7 @@ const KnowledgeBase = () => {
   const [error, setError] = useState('');
   
   // Chat State - now using global context
-  const { messages, addMessage } = useChat();
+  const { messages, addMessage, clearMessages } = useChat();
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
 
@@ -221,6 +221,7 @@ const KnowledgeBase = () => {
             <div className="chat-input-container">
               <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="文書について質問を入力..." />
               <button onClick={handleSendMessage} disabled={chatLoading}>送信</button>
+              <button onClick={clearMessages} className="clear-button">履歴をクリア</button>
             </div>
           </div>
         </div>

@@ -190,3 +190,25 @@
 }
 .chat-input-container button:disabled { background-color: #a0a0a0; }
 .chat-input-container button:hover:not(:disabled) { background-color: #0056b3; }
+
+/* Style for the new clear history button */
+.chat-input-container .clear-button {
+  background-color: #f44336; /* Red */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  margin-left: 10px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s;
+}
+
+.chat-input-container .clear-button:hover {
+  background-color: #d32f2f; /* Darker Red on Hover */
+}
+
+.chat-input-container .clear-button:disabled {
+  background-color: #a0a0a0;
+  cursor: not_allowed;
+}
