@@ -27,7 +27,7 @@ def ensure_json(input_str: str) -> dict:
 
 
 @tool("list_projects")
-def list_projects():
+def list_projects(input: str) -> str:
     """List all Redmine projects."""
     redmine = get_redmine_instance(REDMINE_URL, REDMINE_API_KEY)
     projects = redmine.project.all(limit=200)
