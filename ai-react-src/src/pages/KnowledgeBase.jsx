@@ -218,7 +218,7 @@ const KnowledgeBase = () => {
               <div ref={messagesEndRef} />
             </div>
             <div className="chat-input-container">
-              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="文書について質問を入力..." disabled={chatLoading} />
+              <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="文書について質問を入力..." />
               <button onClick={handleSendMessage} disabled={chatLoading}>送信</button>
             </div>
           </div>
