@@ -33,8 +33,17 @@ export const ChatProvider = ({ children }) => {
     setMessages([]);
   };
 
+  // Function to import messages
+  const importMessages = (importedMessages) => {
+    if (Array.isArray(importedMessages)) {
+      setMessages(importedMessages);
+    } else {
+      console.error("Import failed: provided data is not a valid message array.");
+    }
+  };
+
   return (
-    <ChatContext.Provider value={{ messages, addMessage, clearMessages }}>
+    <ChatContext.Provider value={{ messages, addMessage, clearMessages, importMessages }}>
       {children}
     </ChatContext.Provider>
   );

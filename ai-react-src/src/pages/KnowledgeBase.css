@@ -191,24 +191,65 @@
 .chat-input-container button:disabled { background-color: #a0a0a0; }
 .chat-input-container button:hover:not(:disabled) { background-color: #0056b3; }
 
-/* Style for the new clear history button */
-.chat-input-container .clear-button {
-  background-color: #f44336; /* Red */
+/* Styles for the new dropdown menu in the chat input */
+.more-menu-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.more-menu-button {
+  background-color: #c9d0d6 !important;
   color: white;
-  border: none;
-  padding: 10px 20px;
-  margin-left: 10px;
+  padding: 10px;
+  width: 45px;
+  font-size: 18px;
+  line-height: 1;
+  letter-spacing: 1px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
   border-radius: 20px;
+}
+
+.more-menu-button:hover {
+  background-color: #f3f1f1 !important;
+}
+
+.dropdown-menu {
+  display: block;
+  position: absolute;
+  bottom: 100%; /* Position above the button */
+  right: 0;
+  background-color: white;
+  min-width: 160px;
+  box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+  z-index: 100;
+  border-radius: 8px;
+  padding: 8px 0;
+  margin-bottom: 5px;
+}
+
+.dropdown-item {
+  color: black;
+  padding: 12px 16px;
+  text-decoration: none;
+  display: block;
   cursor: pointer;
-  font-size: 16px;
-  transition: background-color 0.2s;
+  font-size: 14px;
 }
 
-.chat-input-container .clear-button:hover {
-  background-color: #d32f2f; /* Darker Red on Hover */
+.dropdown-item:hover {
+  background-color: #f1f1f1;
 }
 
-.chat-input-container .clear-button:disabled {
-  background-color: #a0a0a0;
-  cursor: not_allowed;
+.dropdown-item-danger {
+  color: #dc3545; /* Red for destructive actions */
+}
+
+.dropdown-item-danger:hover {
+  color: #721c24;
+  background-color: #f8d7da;
 }

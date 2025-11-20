@@ -18,13 +18,16 @@ const KnowledgeBase = () => {
   const [error, setError] = useState('');
   
   // Chat State - now using global context
-  const { messages, addMessage, clearMessages } = useChat();
+  const { messages, addMessage, clearMessages, importMessages } = useChat();
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Refs
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const chatImportInputRef = useRef(null);
+  const menuRef = useRef(null);
 
   // --- Effects ---
   const fetchDocuments = async () => {
@@ -87,6 +90,19 @@ const KnowledgeBase = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Effect to close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [menuRef]);
+
   // --- Event Handlers ---
   const handleFileSelect = (e) => {
     e.preventDefault();
@@ -140,6 +156,46 @@ const KnowledgeBase = () => {
     } else {
       addMessage({ sender: 'bot', text: result.answer, sources: result.sources }); // Use addMessage from context
     }
+  };
+
+  const handleChatExport = () => {
+    if (messages.length === 0) {
+      alert("No chat history to export.");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `chat-history-${new Date().toISOString()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleChatImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target.result);
+        if (window.confirm("Are you sure you want to replace the current chat history with the imported one?")) {
+            importMessages(imported);
+        }
+      } catch (error) {
+        alert("Failed to parse chat history file. Please make sure it's a valid JSON file.");
+        console.error("Failed to import chat history:", error);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = null; // Allow re-selecting the same file
+  };
+
+  const onImportButtonClick = () => {
+    chatImportInputRef.current?.click();
   };
 
   return (
@@ -219,9 +275,27 @@ const KnowledgeBase = () => {
               <div ref={messagesEndRef} />
             </div>
             <div className="chat-input-container">
+              <input
+                type="file"
+                ref={chatImportInputRef}
+                style={{ display: 'none' }}
+                accept=".json"
+                onChange={handleChatImport}
+              />
               <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="文書について質問を入力..." />
               <button onClick={handleSendMessage} disabled={chatLoading}>送信</button>
-              <button onClick={clearMessages} className="clear-button">履歴をクリア</button>
+              <div className="more-menu-container" ref={menuRef}>
+                <button onClick={() => setMenuOpen(!menuOpen)} className="more-menu-button">
+                  ...
+                </button>
+                {menuOpen && (
+                  <div className="dropdown-menu">
+                    <div onClick={() => { onImportButtonClick(); setMenuOpen(false); }} className="dropdown-item">インポート</div>
+                    <div onClick={() => { handleChatExport(); setMenuOpen(false); }} className="dropdown-item">エクスポート</div>
+                    <div onClick={() => { clearMessages(); setMenuOpen(false); }} className="dropdown-item dropdown-item-danger">履歴をクリア</div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
