@@ -10,6 +10,12 @@ from backend.agents.redmine_prompt import get_redmine_prompt
 
 load_dotenv()
 
+# ---------------------------------------
+# 全局工具去重 + 实体防重复 Memory
+# ---------------------------------------
+processed_entities = set()
+executed_tool_calls = set()
+
 llm = AzureChatOpenAI(
     azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
