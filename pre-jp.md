@@ -1,6 +1,8 @@
 bundle exec rails s -e production -b 0.0.0.0 -p 3000
 uvicorn server:app --reload
 
+python -m backend.agents.redmine-agent
+
 **WSL + PostgreSQL + Redmine 6.1（Rails 6.1 / Ruby 3.0–3.2）**
 （√ は初回/たまに必要な作業；★ は毎日起動する際に必要）
 
