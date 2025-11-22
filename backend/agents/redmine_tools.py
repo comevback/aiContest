@@ -102,9 +102,31 @@ def get_project(input: Any = None) -> str:
     return "\n".join(fields)
 
 
+@tool("create_project")
+@guard_tool("create_project")
+def create_project(input: Any = None) -> str:
+    """
+    Create a new project.
+
+    Input JSON: {"name": "New Project", "identifier": "new-project"}
+    """
+    data = parse_input(input)
+    redmine = get_redmine()
+
+    project = redmine.project.new()
+    project.name = data.get("name")
+    project.identifier = data.get("identifier")
+
+    if not project.name or not project.identifier:
+        return "Error: name and identifier are required."
+
+    project.save()
+    return f"Created project: {project.name} (ID: {project.id})"
+
 # ============================================================
 # Issue tools (read)
 # ============================================================
+
 
 @tool("get_project_issues")
 @guard_tool("get_project_issues")
@@ -846,6 +868,7 @@ TOOLS = [
     # project
     list_projects,
     get_project,
+    create_project,
 
     # issues (read)
     get_project_issues,

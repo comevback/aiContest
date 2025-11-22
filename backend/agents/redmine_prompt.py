@@ -72,6 +72,7 @@ def get_redmine_prompt():
             """
 
             """=== GLOBAL EXECUTION RULES ===
+            0. **CHECK FOR COMPLETION**: After every tool call, review the user's original request. If the tool's output indicates the request is now fulfilled (e.g., the requested number of items have been created), you MUST stop calling tools and provide a final summary to the user (e.g., "I have created Project Alpha and Project Beta as requested.").
             1. NEVER repeat the same tool call with the same arguments in the same conversation.
             2. NEVER update or modify the same entity (issue, user, project, record, etc.) more than once unless the user explicitly asks for it.
             3. If you have completed the requested operation, STOP and respond: "Task completed."
