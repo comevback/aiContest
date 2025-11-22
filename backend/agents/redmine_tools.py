@@ -5,7 +5,6 @@ import json
 from typing import Any, List, Optional
 
 from langchain.tools import tool
-from backend.agents.tool_guard import guard_tool
 
 from backend.redmine.client import get_redmine_instance
 from backend.redmine.wiki import upsert_wiki_page
@@ -57,7 +56,6 @@ def get_redmine():
 # ============================================================
 
 @tool("list_projects")
-@guard_tool("list_projects")
 def list_projects(input: Any = None) -> str:
     """
     List all Redmine projects.
@@ -71,7 +69,6 @@ def list_projects(input: Any = None) -> str:
 
 
 @tool("get_project")
-@guard_tool("get_project")
 def get_project(input: Any = None) -> str:
     """
     Get project detail.
@@ -103,7 +100,6 @@ def get_project(input: Any = None) -> str:
 
 
 @tool("create_project")
-@guard_tool("create_project")
 def create_project(input: Any = None) -> str:
     """
     Create a new project.
@@ -129,7 +125,6 @@ def create_project(input: Any = None) -> str:
 
 
 @tool("get_project_issues")
-@guard_tool("get_project_issues")
 def get_project_issues(input: Any = None) -> str:
     """
     Get issues for a project.
@@ -157,7 +152,6 @@ def get_project_issues(input: Any = None) -> str:
 
 
 @tool("get_issue")
-@guard_tool("get_issue")
 def get_issue(input: Any = None) -> str:
     """
     Get single issue detail.
@@ -189,7 +183,6 @@ def get_issue(input: Any = None) -> str:
 
 
 @tool("search_issues")
-@guard_tool("search_issues")
 def search_issues(input: Any = None) -> str:
     """
     Search issues with simple filters.
@@ -238,7 +231,6 @@ def search_issues(input: Any = None) -> str:
 # ============================================================
 
 @tool("create_issue")
-@guard_tool("create_issue")
 def create_issue(input: Any = None) -> str:
     """
     Create issue.
@@ -287,7 +279,6 @@ def create_issue(input: Any = None) -> str:
 
 
 @tool("update_issue")
-@guard_tool("update_issue")
 def update_issue(input: Any = None) -> str:
     """
     Update issue basic fields.
@@ -333,7 +324,6 @@ def update_issue(input: Any = None) -> str:
 
 
 @tool("delete_issue")
-@guard_tool("delete_issue")
 def delete_issue(input: Any = None) -> str:
     """
     Delete issue.
@@ -352,7 +342,6 @@ def delete_issue(input: Any = None) -> str:
 
 
 @tool("set_issue_status")
-@guard_tool("set_issue_status")
 def set_issue_status(input: Any = None) -> str:
     """
     Set issue status.
@@ -379,7 +368,6 @@ def set_issue_status(input: Any = None) -> str:
 
 
 @tool("assign_issue")
-@guard_tool("assign_issue")
 def assign_issue(input: Any = None) -> str:
     """
     Assign issue to a user.
@@ -404,7 +392,6 @@ def assign_issue(input: Any = None) -> str:
 
 
 @tool("set_issue_priority")
-@guard_tool("set_issue_priority")
 def set_issue_priority(input: Any = None) -> str:
     """
     Set issue priority.
@@ -429,7 +416,6 @@ def set_issue_priority(input: Any = None) -> str:
 
 
 @tool("set_issue_dates")
-@guard_tool("set_issue_dates")
 def set_issue_dates(input: Any = None) -> str:
     """
     Set issue start and due dates.
@@ -463,7 +449,6 @@ def set_issue_dates(input: Any = None) -> str:
 
 
 @tool("add_note")
-@guard_tool("add_note")
 def add_note(input: Any = None) -> str:
     """
     Add a note to issue.
@@ -496,7 +481,6 @@ def add_note(input: Any = None) -> str:
 # ============================================================
 
 @tool("list_users")
-@guard_tool("list_users")
 def list_users(input: Any = None) -> str:
     """
     List users.
@@ -516,7 +500,6 @@ def list_users(input: Any = None) -> str:
 
 
 @tool("get_user")
-@guard_tool("get_user")
 def get_user(input: Any = None) -> str:
     """
     Get user detail.
@@ -540,7 +523,6 @@ def get_user(input: Any = None) -> str:
 
 
 @tool("find_user_by_name")
-@guard_tool("find_user_by_name")
 def find_user_by_name(input: Any = None) -> str:
     """
     Find users by name substring.
@@ -565,7 +547,6 @@ def find_user_by_name(input: Any = None) -> str:
 # ============================================================
 
 @tool("list_project_members")
-@guard_tool("list_project_members")
 def list_project_members(input: Any = None) -> str:
     """
     List project members.
@@ -597,7 +578,6 @@ def list_project_members(input: Any = None) -> str:
 # ============================================================
 
 @tool("update_wiki")
-@guard_tool("update_wiki")
 def update_wiki(input: Any = None) -> str:
     """
     Create or update wiki page via helper.
@@ -621,7 +601,6 @@ def update_wiki(input: Any = None) -> str:
 
 
 @tool("get_wiki_page")
-@guard_tool("get_wiki_page")
 def get_wiki_page(input: Any = None) -> str:
     """
     Get wiki page content.
@@ -644,7 +623,6 @@ def get_wiki_page(input: Any = None) -> str:
 
 
 @tool("list_wiki_pages")
-@guard_tool("list_wiki_pages")
 def list_wiki_pages(input: Any = None) -> str:
     """
     List wiki pages of a project.
@@ -662,7 +640,6 @@ def list_wiki_pages(input: Any = None) -> str:
 
 
 @tool("delete_wiki_page")
-@guard_tool("delete_wiki_page")
 def delete_wiki_page(input: Any = None) -> str:
     """
     Delete a wiki page.
@@ -690,7 +667,6 @@ def delete_wiki_page(input: Any = None) -> str:
 # ============================================================
 
 @tool("list_time_entries")
-@guard_tool("list_time_entries")
 def list_time_entries(input: Any = None) -> str:
     """
     List time entries.
@@ -728,7 +704,6 @@ def list_time_entries(input: Any = None) -> str:
 
 
 @tool("add_time_entry")
-@guard_tool("add_time_entry")
 def add_time_entry(input: Any = None) -> str:
     """
     Add a time entry.
@@ -776,7 +751,6 @@ def add_time_entry(input: Any = None) -> str:
 
 
 @tool("update_time_entry")
-@guard_tool("update_time_entry")
 def update_time_entry(input: Any = None) -> str:
     """
     Update a time entry.
@@ -807,7 +781,6 @@ def update_time_entry(input: Any = None) -> str:
 
 
 @tool("delete_time_entry")
-@guard_tool("delete_time_entry")
 def delete_time_entry(input: Any = None) -> str:
     """
     Delete a time entry.
@@ -830,7 +803,6 @@ def delete_time_entry(input: Any = None) -> str:
 # ============================================================
 
 @tool("analyze_project")
-@guard_tool("analyze_project")
 def analyze_project(input: Any = None) -> str:
     """
     Analyze project issues with AI.
