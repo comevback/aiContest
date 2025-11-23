@@ -1,85 +1,34 @@
-# backend/agents/redmine-agent.py
+"""
+Enterprise-style LangGraph Redmine agent (simplified & fixed version).
+
+- Uses AzureChatOpenAI + Redmine TOOLS
+- Uses LangGraph StateGraph with tool-calling loop
+- No infinite loops (router with stop condition)
+- No broken summarizer / checkpoint bugs
+"""
+
 import os
 import json
-from typing import Any, Dict
+from typing import TypedDict, List, Dict, Any, Optional
 
 from dotenv import load_dotenv
+
 from langchain_openai import AzureChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.tools import BaseTool
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint import MemorySaver
 
 from backend.agents.redmine_tools import TOOLS
 
+# ---------------------------------------------------------------------
+# Environment & LLM
+# ---------------------------------------------------------------------
+
 load_dotenv()
 
-
-# ---------------------------
-# 工具 schema 构建（让 Planner 理解所有 tools）
-# ---------------------------
-def build_tools_schema(tools) -> str:
-    lines = []
-    for t in tools:
-        lines.append(f"Tool: {t.name}")
-        lines.append(f"Description: {t.description}")
-
-        # 兼容 Pydantic v1 / v2
-        if hasattr(t.args_schema, "model_json_schema"):
-            schema = t.args_schema.model_json_schema()
-        else:
-            schema = t.args_schema.schema()
-
-        properties = schema.get("properties", {})
-        required = schema.get("required", [])
-
-        lines.append("Arguments:")
-        for arg_name, arg_info in properties.items():
-            arg_type = arg_info.get("type", "unknown")
-            is_required = "required" if arg_name in required else "optional"
-            lines.append(f"  - {arg_name} ({arg_type}, {is_required})")
-
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def strip_markdown_code_fence(s: str) -> str:
-    s = s.strip()
-    if s.startswith("```"):
-        lines = s.split("\n")
-        if len(lines) >= 3:
-            return "\n".join(lines[1:-1]).strip()
-    return s
-
-
-def parse_json_output(text: str) -> Any:
-    cleaned = strip_markdown_code_fence(text.strip())
-    return json.loads(cleaned)
-
-
-# ---------------------------
-# Planner Prompt
-# ---------------------------
-PLAN_PROMPT = ChatPromptTemplate.from_template("""
-You are a planner.
-You convert user instructions into a precise JSON execution plan.
-
-You can use the following tools:
-
-{tool_schema}
-
-Rules:
-- Output MUST be a JSON array.
-- Each step MUST have: {{ "tool": "...", "args": {{...}} }}
-- Use ONLY the tools listed above.
-- Use correct required arguments.
-- Produce EXACTLY the number of steps the user asks.
-- NO explanation, NO extra text, ONLY valid JSON.
-
-User request:
-{input}
-""")
-
-
-planner_llm = AzureChatOpenAI(
+# Base LLM
+base_llm = AzureChatOpenAI(
     azure_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME"),
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
@@ -87,180 +36,293 @@ planner_llm = AzureChatOpenAI(
     temperature=0,
 )
 
+# LLM with tools attached (for tool-calling)
+tools_by_name: Dict[str, BaseTool] = {t.name: t for t in TOOLS}
+llm_with_tools = base_llm.bind_tools(list(tools_by_name.values()))
 
-# ---------------------------
-# 错误分析：AI 解释错误
-# ---------------------------
-def analyze_error(tool_name: str, args: Dict[str, Any], error_text: str) -> str:
-    prompt = f"""
-A tool call failed in an Agent system.
-
-Tool: {tool_name}
-Args: {args}
-Error: {error_text}
-
-Please do:
-1. Explain the error in friendly simple Chinese.
-2. Suggest 2–4 possible next actions.
-3. Ask the user what they want to do next.
-
-Do NOT output JSON.
-"""
-    return planner_llm.invoke(prompt).content
+# ---------------------------------------------------------------------
+# State definition
+# ---------------------------------------------------------------------
 
 
-# ---------------------------
-# 决策 Prompt（方案 C：若用户表达不明确 → 询问具体值）
-# ---------------------------
-DECIDE_PROMPT = ChatPromptTemplate.from_template("""
-You are an agent controller.
+class AgentState(TypedDict):
+    # Full conversation history (LangChain Message objects)
+    messages: List[Any]
 
-A tool call failed.
+    # Pending tool call info (from last LLM step)
+    pending_tool: Optional[str]
+    pending_args: Dict[str, Any]
+    pending_tool_call_id: Optional[str]
 
-Tool: {tool_name}
-Args: {args}
+    # Tool execution result + error flag
+    tool_result: Any
+    error: Optional[str]
 
-User replied:
-"{user_reply}"
-
-Your job:
-Interpret the user's intention and generate an action in JSON.
-
-JSON format:
-{{
-  "action": "retry" | "modify_args" | "skip" | "abort" | "continue" | "ask_user",
-  "new_args": {{}} or null
-}}
-
-IMPORTANT RULES for "ask_user":
-- If the user says vague things like "换个名字", "用别的名字", "重新弄", etc.,
-  and does NOT provide a specific concrete name/identifier,
-  then you MUST return:
-  {{
-    "action": "ask_user",
-    "new_args": null
-  }}
-- DO NOT guess new identifiers.
-- DO NOT create arguments yourself.
-- Only when user clearly gives new name/identifier,
-  then you may produce modify_args with exact new_args.
-
-Output ONLY JSON. No explanation.
-""")
+    # Whether this task is finished
+    done: bool
 
 
-def decide_next_action(user_reply: str, tool_name: str, args: Dict[str, Any]) -> Dict[str, Any]:
-    resp = planner_llm.invoke(
-        DECIDE_PROMPT.format(
-            user_reply=user_reply,
-            tool_name=tool_name,
-            args=args,
+# ---------------------------------------------------------------------
+# Agent node: call LLM, decide whether to use tools
+# ---------------------------------------------------------------------
+
+
+def agent_node(state: AgentState) -> Dict[str, Any]:
+    """
+    - Take conversation history from state["messages"]
+    - Call LLM with tool support
+    - If LLM emits tool_calls -> set pending_tool / args
+    - If no tool_calls -> mark done=True
+    """
+    messages = state["messages"]
+
+    # If already done, just return; router will send to END
+    if state.get("done"):
+        return {}
+
+    # Call LLM with current conversation
+    response: AIMessage = llm_with_tools.invoke(messages)
+
+    # Append the AI message to history
+    updates: Dict[str, Any] = {
+        "messages": [response],
+        "pending_tool": None,
+        "pending_args": {},
+        "pending_tool_call_id": None,
+        "done": False,
+    }
+
+    # Check if tool_calls exist
+    tool_calls = getattr(response, "tool_calls", None) or []
+    if tool_calls:
+        # Use the first tool_call
+        tc = tool_calls[0]
+        tool_name = tc["name"]
+        tool_args = tc.get("args", {}) or {}
+        tool_call_id = tc.get("id")
+
+        updates["pending_tool"] = tool_name
+        updates["pending_args"] = tool_args
+        updates["pending_tool_call_id"] = tool_call_id
+        # Not done yet; need to run the tool
+        updates["done"] = False
+    else:
+        # No tool call → final answer
+        updates["done"] = True
+
+    return updates
+
+
+# ---------------------------------------------------------------------
+# Tool node: actually execute the tool
+# ---------------------------------------------------------------------
+
+
+def tool_node(state: AgentState) -> Dict[str, Any]:
+    """
+    - Reads pending_tool / pending_args from state
+    - Executes the matching tool
+    - Appends ToolMessage to conversation
+    - Clears pending_tool
+    """
+    tool_name = state.get("pending_tool")
+    args = state.get("pending_args") or {}
+    call_id = state.get("pending_tool_call_id")
+
+    if not tool_name:
+        # Nothing to do
+        return {
+            "tool_result": None,
+            "error": None,
+        }
+
+    if tool_name not in tools_by_name:
+        err = f"Unknown tool: {tool_name}"
+        return {
+            "tool_result": None,
+            "error": err,
+            "messages": [
+                ToolMessage(
+                    content=err,
+                    name=tool_name,
+                    tool_call_id=call_id or "unknown_call_id",
+                )
+            ],
+            "pending_tool": None,
+            "pending_args": {},
+            "pending_tool_call_id": None,
+        }
+
+    tool = tools_by_name[tool_name]
+
+    try:
+        print(f"[Tool] Calling {tool_name} with args: {args}")
+        raw_result = tool.run(json.dumps(args, ensure_ascii=False))
+        print("[Tool] Result:")
+        print(raw_result)
+
+        tool_msg = ToolMessage(
+            content=str(raw_result),
+            name=tool_name,
+            tool_call_id=call_id or "unknown_call_id",
         )
-    ).content
-    return parse_json_output(resp)
+
+        return {
+            "messages": [tool_msg],
+            "tool_result": raw_result,
+            "error": None,
+            "pending_tool": None,
+            "pending_args": {},
+            "pending_tool_call_id": None,
+        }
+
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        print(f"[Tool ERROR] {err}")
+        tool_msg = ToolMessage(
+            content=err,
+            name=tool_name,
+            tool_call_id=call_id or "unknown_call_id",
+        )
+        # In a more advanced version, we could let the LLM handle this error
+        return {
+            "messages": [tool_msg],
+            "tool_result": None,
+            "error": err,
+            "pending_tool": None,
+            "pending_args": {},
+            "pending_tool_call_id": None,
+            "done": True,  # stop on error for now
+        }
 
 
-# ---------------------------
-# 执行计划：智能错误恢复（方案 C 完整实现）
-# ---------------------------
-def execute_plan(plan: Any) -> None:
-    if isinstance(plan, str):
-        plan = parse_json_output(plan)
+# ---------------------------------------------------------------------
+# Router after agent: decide whether to call tools or end
+# ---------------------------------------------------------------------
 
-    for step in plan:
-        tool_name = step["tool"]
-        args = step["args"]
-        tool = {t.name: t for t in TOOLS}[tool_name]
 
-        tool_input = json.dumps(args, ensure_ascii=False)
+def agent_router(state: AgentState) -> str:
+    """
+    - If done=True → end
+    - Else if pending_tool is set → go to tool node
+    - Else → end (nothing more to do)
+    """
+    if state.get("done"):
+        return "end"
+    if state.get("pending_tool"):
+        return "call_tool"
+    return "end"
 
-        print(f"\n[EXEC] Calling tool: {tool_name} with {args}")
 
-        try:
-            print(tool.run(tool_input))
+# ---------------------------------------------------------------------
+# Build LangGraph workflow
+# ---------------------------------------------------------------------
+
+
+workflow = StateGraph(AgentState)
+
+workflow.add_node("agent", agent_node)
+workflow.add_node("tools", tool_node)
+
+# Start from agent
+workflow.add_edge("__start__", "agent")
+
+# After agent, either call tool or end
+workflow.add_conditional_edges(
+    "agent",
+    agent_router,
+    {
+        "call_tool": "tools",
+        "end": END,
+    },
+)
+
+# After tool, always go back to agent (LLM sees tool result)
+workflow.add_edge("tools", "agent")
+
+# Use in-memory checkpoint (just for thread separation)
+checkpointer = MemorySaver()
+
+app = workflow.compile(checkpointer=checkpointer)
+
+# ---------------------------------------------------------------------
+# Helper for running in CLI
+# ---------------------------------------------------------------------
+
+
+def run_agent(user_input: str, thread_id: str = "interactive-thread") -> None:
+    """
+    Run one turn of the agent for a given user input.
+    """
+    initial_state: AgentState = {
+        "messages": [HumanMessage(content=user_input)],
+        "pending_tool": None,
+        "pending_args": {},
+        "pending_tool_call_id": None,
+        "tool_result": None,
+        "error": None,
+        "done": False,
+    }
+
+    config = {
+        "configurable": {"thread_id": thread_id},
+    }
+
+    print(f"\n===== Running Agent for Thread: {thread_id} =====")
+
+    try:
+        for event in app.stream(initial_state, config, stream_mode="values"):
+            # event is a dict like {"agent": {...}} or {"tools": {...}}
+            if "agent" in event:
+                agent_state = event["agent"]
+                # Print latest assistant message (if any)
+                msgs = agent_state.get("messages") or []
+                if msgs:
+                    last_msg = msgs[-1]
+                    if isinstance(last_msg, AIMessage):
+                        print("\n[Assistant]:", last_msg.content)
+
+            if "tools" in event:
+                tool_state = event["tools"]
+                if tool_state.get("error"):
+                    print("\n[Tool ERROR]:", tool_state["error"])
+                else:
+                    print("\n[Tool OUTPUT]:")
+                    print(tool_state.get("tool_result"))
+
+        print("\n===== Done =====\n")
+
+    except Exception as e:
+        print("\nAn error occurred during agent execution:", e)
+        import traceback
+        traceback.print_exc()
+
+
+# ---------------------------------------------------------------------
+# CLI entrypoint
+# ---------------------------------------------------------------------
+
+
+if __name__ == "__main__":
+    print("===================================================================")
+    print("===================== Redmine LangGraph Agent =====================")
+    print("===================================================================")
+    print("This agent uses LangGraph + AzureChatOpenAI + Redmine tools.")
+    print("It supports tool-calling with loop control and basic error handling.")
+    print("NOTE: Ensure Azure OpenAI environment variables are set correctly.")
+    print("-------------------------------------------------------------------")
+    print("Available tools:", list(tools_by_name.keys()))
+    print("-------------------------------------------------------------------")
+    print("Type your request (or 'exit' to quit):")
+
+    thread_id = "interactive-thread"
+
+    while True:
+        user = input("You: ").strip()
+        if user.lower() in {"exit", "quit"}:
+            print("Bye.")
+            break
+        if not user:
             continue
 
-        except Exception as e:
-            error_text = str(e)
-            print("\n🔥 工具执行失败！AI 正在分析原因...\n")
-
-            # Step 1: AI 报告错误
-            print(analyze_error(tool_name, args, error_text))
-
-            # Step 2: 用户自然语言响应
-            while True:
-                user_reply = input("\n你的回答（请用自然语言描述你想怎么处理）：\n> ").strip()
-
-                # Step 3: AI 判断下一步动作
-                action_plan = decide_next_action(user_reply, tool_name, args)
-                action = action_plan.get("action")
-                new_args = action_plan.get("new_args")
-
-                print(f"\n🤖 AI 决策: {action}, new_args = {new_args}")
-
-                if action == "ask_user":
-                    print("🤖 请提供具体的 name 与 identifier，例如：\n  名称：XXX\n  标识符：xxx-1")
-                    continue  # 再问一次
-
-                elif action == "modify_args":
-                    updated = args.copy()
-                    updated.update(new_args)
-                    tool_input = json.dumps(updated, ensure_ascii=False)
-                    print(f"🔄 使用新参数重试: {updated}")
-
-                    try:
-                        print(tool.run(tool_input))
-                    except Exception as e2:
-                        print(f"⚠ 重试失败: {e2}")
-                    return  # ❗阻塞：结束整个计划
-
-                elif action == "retry":
-                    print("🔄 重试中...")
-                    try:
-                        print(tool.run(tool_input))
-                    except Exception as e2:
-                        print(f"⚠ 重试失败: {e2}")
-                    return
-
-                elif action == "skip":
-                    print("➡ 跳过该步骤")
-                    return
-
-                elif action == "continue":
-                    print("➡ 忽略错误，继续执行后续步骤")
-                    break
-
-                elif action == "abort":
-                    print("🛑 执行终止")
-                    exit()
-
-                else:
-                    print("⚠ 未知动作，已跳过")
-                    return
-
-
-# ---------------------------
-# 主循环
-# ---------------------------
-print("Redmine Agent 启动成功（输入 exit 退出）")
-
-while True:
-    user = input("\n你：").strip()
-    if user.lower() in {"exit", "quit"}:
-        print("再见")
-        break
-
-    tool_schema = build_tools_schema(TOOLS)
-
-    plan_msg = planner_llm.invoke(
-        PLAN_PROMPT.format(
-            input=user,
-            tool_schema=tool_schema,
-        )
-    ).content
-
-    print("\n生成的计划:")
-    print(plan_msg)
-
-    clean_plan = strip_markdown_code_fence(plan_msg)
-    execute_plan(clean_plan)
+        run_agent(user, thread_id=thread_id)
